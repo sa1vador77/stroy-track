@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Инструменты
+.pytest_cache/
+.ruff_cache/
+
+# Локальное окружение
+.env
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
