@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.db import engine
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     configure_logging(json_logs=get_settings().log_json)
     app = FastAPI(title="StroyTrack API", lifespan=lifespan)
     app.include_router(health_router)
+    app.include_router(auth_router)
     return app
 
 

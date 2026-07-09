@@ -1,6 +1,10 @@
 from functools import lru_cache
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEV_SECRET_KEY = "dev-secret-change-me"
 
 
 class Settings(BaseSettings):
@@ -8,7 +12,20 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    environment: Literal["local", "prod"] = "local"
     log_json: bool = False
+
+    # Дефолт только для локальной разработки; prod с ним не стартует (см. валидатор)
+    secret_key: str = _DEV_SECRET_KEY
+    access_token_expire_minutes: int = 60
+
+    @model_validator(mode="after")
+    def forbid_dev_secret_outside_local(self) -> Self:
+        if self.environment != "local" and self.secret_key == _DEV_SECRET_KEY:
+            raise ValueError(
+                "В prod нужен собственный SECRET_KEY (сгенерировать: openssl rand -hex 32)"
+            )
+        return self
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432

@@ -39,4 +39,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      # накатываем миграции и проверяем, что модели не разъехались со схемой
+      - run: uv run alembic upgrade head
+      - run: uv run alembic check
       - run: uv run pytest

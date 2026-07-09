@@ -8,8 +8,12 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
+    "alembic>=1.14",
     "pydantic-settings>=2.6",
     "structlog>=24.4",
+    "pyjwt>=2.10",
+    "pwdlib[argon2]>=0.2",
+    "python-multipart>=0.0.18",
 ]
 
 [dependency-groups]
@@ -41,8 +45,13 @@ select = [
     "SIM", # simplify
     "RUF", # ruff-specific
 ]
+# RUF001-003 — «неоднозначные» юникод-символы: ложные срабатывания на русских комментариях
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+# один event loop на всю сессию: async-движок SQLAlchemy создаётся один раз
+# и должен использоваться из того же loop во всех тестах
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

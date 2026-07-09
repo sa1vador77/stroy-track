@@ -17,14 +17,13 @@ services:
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
+    # миграции накатываются до старта API; реплика одна — гонок за DDL нет
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-
-# Сервисы bot (этап 4) и scheduler (этап 5) будут добавлены на своих этапах:
-# тот же образ, другая команда запуска.
 
 volumes:
   postgres_data:

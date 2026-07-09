@@ -1,19 +1,15 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.db import get_session
+from app.api.deps import SessionDep
 
 router = APIRouter()
-
-SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 @router.get("/health")
 async def health(session: SessionDep) -> dict[str, str]:
+    """Живость сервиса и доступность БД; 503 — база не отвечает."""
     try:
         await session.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
