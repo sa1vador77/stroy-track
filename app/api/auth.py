@@ -21,7 +21,8 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDep
 ) -> Token:
     """Вход по email и паролю (поле username формы — это email)."""
-    user = await session.scalar(select(User).where(User.email == form.username))
+    # email хранится в нижнем регистре — вход не зависит от регистра ввода
+    user = await session.scalar(select(User).where(User.email == form.username.lower()))
     # argon2 — CPU-bound, поэтому тредпул; хэш проверяем и для неизвестного email,
     # чтобы по времени ответа нельзя было перебирать зарегистрированные адреса
     known_hash = user.password_hash if user and user.password_hash else DUMMY_PASSWORD_HASH

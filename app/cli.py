@@ -15,6 +15,7 @@ from app.models import User, UserRole
 
 async def create_admin(session: AsyncSession, *, email: str, password: str, full_name: str) -> User:
     """Первый админ создаётся из консоли: в свежей базе некому выдать права через API."""
+    email = email.lower()  # email хранится в нижнем регистре, как и при создании через API
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"Пароль короче {MIN_PASSWORD_LENGTH} символов")
     existing = await session.scalar(select(User).where(User.email == email))

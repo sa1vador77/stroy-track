@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cli import create_admin
 from app.models import User, UserRole
-from tests.conftest import UserFactory, auth_headers
+from tests.conftest import SiteFactory, UserFactory, auth_headers
 
 PASSWORD = "correct-horse-battery"
 
@@ -22,11 +22,39 @@ class TestAccess:
 
         assert response.status_code == 401
 
-    @pytest.mark.parametrize("role", [UserRole.MANAGER, UserRole.FOREMAN])
-    async def test_non_admin_403(self, client: AsyncClient, make_user: UserFactory, role: UserRole):
-        user = await make_user(role)
+    async def test_foreman_cannot_read_403(self, client: AsyncClient, make_user: UserFactory):
+        foreman = await make_user(UserRole.FOREMAN)
 
-        response = await client.get("/users", headers=auth_headers(user))
+        response = await client.get("/users", headers=auth_headers(foreman))
+
+        assert response.status_code == 403
+
+    async def test_manager_can_read_200(self, client: AsyncClient, make_user: UserFactory):
+        """Менеджеру список нужен, чтобы выбирать прорабов при назначении на объекты."""
+        manager = await make_user(UserRole.MANAGER)
+
+        response = await client.get("/users", headers=auth_headers(manager))
+
+        assert response.status_code == 200
+
+    async def test_manager_cannot_create_403(self, client: AsyncClient, make_user: UserFactory):
+        manager = await make_user(UserRole.MANAGER)
+
+        response = await client.post(
+            "/users",
+            json={"full_name": "Кто-то", "role": "foreman"},
+            headers=auth_headers(manager),
+        )
+
+        assert response.status_code == 403
+
+    async def test_manager_cannot_update_403(self, client: AsyncClient, make_user: UserFactory):
+        manager = await make_user(UserRole.MANAGER)
+        target = await make_user(UserRole.FOREMAN)
+
+        response = await client.patch(
+            f"/users/{target.id}", json={"full_name": "Иное"}, headers=auth_headers(manager)
+        )
 
         assert response.status_code == 403
 
@@ -105,6 +133,40 @@ class TestCreateUser:
         assert response.status_code == 409
         assert "email" in response.json()["detail"]
 
+    async def test_email_stored_lowercase_login_any_case(self, client: AsyncClient, admin: User):
+        response = await client.post(
+            "/users",
+            json={
+                "full_name": "Мария Менеджер",
+                "role": "manager",
+                "email": "Maria@Example.COM",
+                "password": PASSWORD,
+            },
+            headers=auth_headers(admin),
+        )
+
+        assert response.status_code == 201
+        assert response.json()["email"] == "maria@example.com"
+
+        login = await client.post(
+            "/auth/login", data={"username": "MARIA@EXAMPLE.com", "password": PASSWORD}
+        )
+        assert login.status_code == 200
+
+    async def test_duplicate_email_other_case_409(
+        self, client: AsyncClient, admin: User, make_user: UserFactory
+    ):
+        """Уникальность email нельзя обойти сменой регистра."""
+        existing = await make_user(UserRole.MANAGER)
+
+        response = await client.post(
+            "/users",
+            json={"full_name": "Дубль", "role": "manager", "email": existing.email.upper()},
+            headers=auth_headers(admin),
+        )
+
+        assert response.status_code == 409
+
     async def test_duplicate_telegram_id_409(
         self, client: AsyncClient, admin: User, make_user: UserFactory
     ):
@@ -146,6 +208,12 @@ class TestReadUsers:
         response = await client.get("/users/1000000", headers=auth_headers(admin))
 
         assert response.status_code == 404
+
+    async def test_id_out_of_int_range_422(self, client: AsyncClient, admin: User):
+        """id за пределами PG INTEGER — 422 на валидации, а не DataError из драйвера."""
+        response = await client.get("/users/99999999999999999999", headers=auth_headers(admin))
+
+        assert response.status_code == 422
 
 
 class TestUpdateUser:
@@ -233,6 +301,33 @@ class TestUpdateUser:
 
         assert response.status_code == 400
 
+    async def test_null_for_required_field_422(
+        self, client: AsyncClient, admin: User, make_user: UserFactory
+    ):
+        user = await make_user(UserRole.FOREMAN)
+
+        response = await client.patch(
+            f"/users/{user.id}", json={"role": None}, headers=auth_headers(admin)
+        )
+
+        assert response.status_code == 422
+
+    async def test_role_change_clears_site_assignments(
+        self, client: AsyncClient, admin: User, make_user: UserFactory, make_site: SiteFactory
+    ):
+        """Повышенный прораб не сохраняет привязок: вернись он в прорабы,
+        старые объекты не должны молча стать ему видны снова."""
+        foreman = await make_user(UserRole.FOREMAN)
+        site = await make_site(foremen=[foreman])
+
+        response = await client.patch(
+            f"/users/{foreman.id}", json={"role": "manager"}, headers=auth_headers(admin)
+        )
+
+        assert response.status_code == 200
+        detail = await client.get(f"/sites/{site.id}", headers=auth_headers(admin))
+        assert detail.json()["foremen"] == []
+
     async def test_cannot_deactivate_self(self, client: AsyncClient, admin: User):
         response = await client.patch(
             f"/users/{admin.id}", json={"is_active": False}, headers=auth_headers(admin)
@@ -298,3 +393,10 @@ class TestCreateAdminCli:
             await create_admin(
                 db_session, email="root@example.com", password="short", full_name="Главный"
             )
+
+    async def test_email_lowercased(self, db_session: AsyncSession):
+        admin = await create_admin(
+            db_session, email="Root@Example.COM", password=PASSWORD, full_name="Главный"
+        )
+
+        assert admin.email == "root@example.com"

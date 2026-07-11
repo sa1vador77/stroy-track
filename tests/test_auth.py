@@ -70,6 +70,14 @@ class TestLogin:
 
         assert response.status_code == 401
 
+    async def test_email_case_insensitive(self, client: AsyncClient, make_user: UserFactory):
+        """Email хранится в нижнем регистре, вход не зависит от регистра ввода."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+
+        response = await login(client, user.email.upper(), PASSWORD)
+
+        assert response.status_code == 200
+
     async def test_inactive_user_401(self, client: AsyncClient, make_user: UserFactory):
         user = await make_user(UserRole.MANAGER, password=PASSWORD)
         user.is_active = False

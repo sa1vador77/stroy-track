@@ -3,10 +3,10 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric
+from sqlalchemy import CheckConstraint, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import MATERIAL_QUANTITY, Base
 
 
 class Material(Base):
@@ -29,7 +29,7 @@ class MaterialDelivery(Base):
     material_id: Mapped[int] = mapped_column(
         ForeignKey("materials.id", ondelete="RESTRICT"), index=True
     )
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    quantity: Mapped[Decimal] = mapped_column(MATERIAL_QUANTITY)
     delivery_date: Mapped[date]
     supplier: Mapped[str]
 

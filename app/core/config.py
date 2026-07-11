@@ -7,6 +7,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET_KEY = "dev-secret-change-me"
+_DEV_POSTGRES_PASSWORD = "stroytrack"
 
 
 class Settings(BaseSettings):
@@ -22,17 +23,25 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     @model_validator(mode="after")
-    def forbid_dev_secret_outside_local(self) -> Self:
-        if self.environment != "local" and self.secret_key == _DEV_SECRET_KEY:
+    def forbid_weak_secrets_outside_local(self) -> Self:
+        if self.environment == "local":
+            return self
+        if self.secret_key == _DEV_SECRET_KEY:
             raise ValueError(
                 "В prod нужен собственный SECRET_KEY (сгенерировать: openssl rand -hex 32)"
             )
+        # HS256 требует ключ не короче 256 бит: короткий восстанавливается
+        # офлайн-перебором по одному перехваченному токену
+        if len(self.secret_key) < 32:
+            raise ValueError("SECRET_KEY короче 32 символов (сгенерировать: openssl rand -hex 32)")
+        if self.postgres_password == _DEV_POSTGRES_PASSWORD:
+            raise ValueError("В prod нужен собственный POSTGRES_PASSWORD")
         return self
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "stroytrack"
-    postgres_password: str = "stroytrack"
+    postgres_password: str = _DEV_POSTGRES_PASSWORD
     postgres_db: str = "stroytrack"
 
     @property

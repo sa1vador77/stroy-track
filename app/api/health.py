@@ -17,6 +17,6 @@ async def health(session: SessionDep) -> dict[str, str]:
     except SQLAlchemyError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="database unavailable",
+            detail="база данных недоступна",
         ) from exc
     return {"status": "ok"}

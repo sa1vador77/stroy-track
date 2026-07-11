@@ -3,10 +3,10 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import MATERIAL_QUANTITY, Base
 from app.models.material import Material
 
 
@@ -66,7 +66,7 @@ class ReportMaterialUsage(Base):
     material_id: Mapped[int] = mapped_column(
         ForeignKey("materials.id", ondelete="RESTRICT"), index=True
     )
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3))
+    quantity: Mapped[Decimal] = mapped_column(MATERIAL_QUANTITY)
 
     report: Mapped[DailyReport] = relationship(back_populates="material_usages")
     material: Mapped[Material] = relationship()
