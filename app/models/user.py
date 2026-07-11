@@ -1,3 +1,5 @@
+"""Пользователи и их роли."""
+
 from enum import StrEnum
 from typing import TYPE_CHECKING
 

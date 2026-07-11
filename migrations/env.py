@@ -1,3 +1,5 @@
+"""Alembic-окружение: async-миграции, DSN из настроек приложения."""
+
 import asyncio
 from logging.config import fileConfig
 

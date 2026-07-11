@@ -1,3 +1,5 @@
+"""Тесты валидации настроек."""
+
 import pytest
 from pydantic import ValidationError
 

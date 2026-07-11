@@ -1,3 +1,5 @@
+"""Тесты аутентификации: /auth/login, /auth/me, require_roles."""
+
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 

@@ -1,3 +1,5 @@
+"""Справочник материалов и их поставки на объекты."""
+
 from datetime import date
 from decimal import Decimal
 

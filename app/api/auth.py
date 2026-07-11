@@ -1,3 +1,5 @@
+"""Аутентификация: вход по email/паролю, профиль владельца токена."""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status

@@ -1,3 +1,5 @@
+"""Общее для всех моделей: naming convention констрейнтов, enum как VARCHAR."""
+
 import enum
 
 import sqlalchemy as sa

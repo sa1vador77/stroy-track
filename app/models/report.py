@@ -1,3 +1,5 @@
+"""Ежедневные отчёты прорабов: работы, численность, фото, расход материалов."""
+
 from datetime import date, datetime
 from decimal import Decimal
 

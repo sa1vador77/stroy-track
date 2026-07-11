@@ -1,3 +1,5 @@
+"""Живость сервиса — для healthcheck'ов Docker и мониторинга."""
+
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError

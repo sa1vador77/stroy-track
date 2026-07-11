@@ -1,3 +1,5 @@
+"""Схемы аутентификации."""
+
 from pydantic import BaseModel
 
 

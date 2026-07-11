@@ -1,3 +1,5 @@
+"""Настройки приложения: переменные окружения, .env, DSN базы."""
+
 from functools import lru_cache
 from typing import Literal, Self
 

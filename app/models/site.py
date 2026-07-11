@@ -1,3 +1,5 @@
+"""Стройплощадки и привязка прорабов к ним."""
+
 from datetime import date
 from enum import StrEnum
 from typing import TYPE_CHECKING

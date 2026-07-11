@@ -1,3 +1,5 @@
+"""Настройка structlog, общая для всех процессов приложения."""
+
 import logging
 
 import structlog

@@ -1,3 +1,5 @@
+"""Бригады на объектах."""
+
 from sqlalchemy import CheckConstraint, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 

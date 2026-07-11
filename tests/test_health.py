@@ -1,3 +1,5 @@
+"""Тест эндпоинта /health."""
+
 from httpx import AsyncClient
 
 

@@ -1,3 +1,5 @@
+"""Зависимости эндпоинтов: сессия БД, текущий пользователь, проверка ролей."""
+
 from collections.abc import Callable, Coroutine
 from typing import Annotated
 

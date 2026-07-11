@@ -1,3 +1,5 @@
+"""Модели предметной области; отсюда их импортируют приложение, Alembic и тесты."""
+
 from app.models.base import Base
 from app.models.crew import Crew
 from app.models.material import Material, MaterialDelivery
