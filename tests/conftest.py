@@ -1,3 +1,5 @@
+"""Общие фикстуры: тестовая БД, транзакция на тест, HTTP-клиент, фабрика пользователей."""
+
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 import pytest
@@ -12,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import get_settings
 from app.core.db import get_session
-from app.core.security import hash_password
+from app.core.security import create_access_token, hash_password
 from app.main import app
 from app.models import Base, User, UserRole
 
@@ -70,6 +72,11 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def auth_headers(user: User) -> dict[str, str]:
+    """Authorization-заголовок от имени пользователя — токен куётся напрямую, минуя /auth/login."""
+    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
 
 
 type UserFactory = Callable[..., Awaitable[User]]

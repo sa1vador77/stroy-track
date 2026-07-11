@@ -1,3 +1,5 @@
+"""Парольная политика и JWT: argon2-хэши, выпуск и разбор токенов."""
+
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -6,6 +8,7 @@ from pwdlib import PasswordHash
 from app.core.config import get_settings
 
 ALGORITHM = "HS256"
+MIN_PASSWORD_LENGTH = 8
 
 _password_hash = PasswordHash.recommended()
 
