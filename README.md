@@ -21,6 +21,12 @@ docker compose up --build
 curl http://localhost:8000/health   # → {"status":"ok"}
 ```
 
+Первый администратор создаётся из консоли — в свежей базе некому выдать права через API:
+
+```bash
+docker compose exec app python -m app.cli create-admin --email admin@example.com
+```
+
 Swagger UI: http://localhost:8000/docs
 
 ## Архитектура
@@ -41,8 +47,9 @@ flowchart LR
 ```
 app/
 ├── main.py       # сборка FastAPI-приложения
+├── cli.py        # служебные команды: create-admin
 ├── core/         # конфиг, подключение к БД, безопасность, логирование
-├── api/          # HTTP-слой: роутеры и зависимости (auth, health)
+├── api/          # HTTP-слой: роутеры и зависимости (auth, health, users, sites)
 ├── models/       # SQLAlchemy-модели предметной области
 └── schemas/      # Pydantic-схемы запросов и ответов
 migrations/       # Alembic (async), автогенерация против моделей
@@ -58,6 +65,7 @@ erDiagram
         string full_name
         string role "foreman | manager | admin"
         string email UK "вход в API (офис)"
+        string password_hash "argon2; null у прорабов"
         bigint telegram_id UK "вход в бота (прораб)"
         bool is_active
     }
@@ -163,8 +171,8 @@ CI (GitHub Actions) гоняет линт, миграции, `alembic check` и 
   документацией FastAPI (passlib и python-jose заброшены). Верификация argon2 —
   CPU-bound, поэтому выполняется в тредпуле; при неизвестном email проверяется
   фиктивный хэш, чтобы время ответа не раскрывало базу адресов.
-- **Fail-fast конфигурация.** С дефолтным `SECRET_KEY` приложение в prod-окружении
-  не стартует; настройки валидируются pydantic-settings при запуске.
+- **Fail-fast конфигурация.** С дефолтными `SECRET_KEY` или паролем БД приложение
+  в prod-окружении не стартует; настройки валидируются pydantic-settings при запуске.
 - **Enum'ы как VARCHAR, не нативный PG ENUM.** Новое значение статуса или роли
   не требует `ALTER TYPE` в миграции.
 - **Naming convention для констрейнтов.** Имена индексов и ограничений
@@ -172,7 +180,7 @@ CI (GitHub Actions) гоняет линт, миграции, `alembic check` и 
   указывают на конкретное ограничение.
 - **Тесты на реальном PostgreSQL, не SQLite.** Проверяется то, что поедет
   в прод: диалект, констрейнты, каскады. Изоляция — транзакцией, а не
-  пересозданием схемы, поэтому 19 тестов проходят за ~1 секунду.
+  пересозданием схемы, поэтому весь прогон занимает пару секунд.
 - **Миграции при старте контейнера.** `alembic upgrade head` перед uvicorn:
   одна реплика приложения — гонок за DDL нет, а окружение всегда на актуальной схеме.
 
