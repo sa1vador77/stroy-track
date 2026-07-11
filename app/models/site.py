@@ -4,7 +4,7 @@ from datetime import date
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKey, Table
+from sqlalchemy import CheckConstraint, Column, ForeignKey, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, str_enum
@@ -38,6 +38,10 @@ site_assignments = Table(
 
 class ConstructionSite(Base):
     __tablename__ = "construction_sites"
+    __table_args__ = (
+        # инвариант проверяет и API, но от конкурентных PATCH защищает только БД
+        CheckConstraint("planned_end_date >= start_date", name="planned_end_not_before_start"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str]

@@ -5,6 +5,14 @@ import enum
 import sqlalchemy as sa
 from sqlalchemy.orm import DeclarativeBase
 
+# Пределы integer/bigint PostgreSQL: id валидируются на границе API,
+# чтобы выход за диапазон был 422, а не DataError из драйвера
+PG_INT_MAX = 2**31 - 1
+PG_BIGINT_MAX = 2**63 - 1
+
+# количество материала в единицах справочника, с точностью до тысячных
+MATERIAL_QUANTITY = sa.Numeric(12, 3)
+
 # Явные шаблоны имён ограничений: без них PG генерирует имена сам,
 # и autogenerate-миграции становятся невоспроизводимыми.
 NAMING_CONVENTION = {

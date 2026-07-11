@@ -4,15 +4,20 @@ from collections.abc import Callable, Coroutine
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Path, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
 from app.core.security import decode_access_token
 from app.models import User, UserRole
+from app.models.base import PG_INT_MAX
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+# id в путях ограничены диапазоном PG INTEGER: выход за него — 422 на валидации,
+# а не DataError из драйвера посреди запроса
+PathID = Annotated[int, Path(ge=1, le=PG_INT_MAX)]
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 

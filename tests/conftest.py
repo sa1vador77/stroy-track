@@ -1,6 +1,7 @@
 """Общие фикстуры: тестовая БД, транзакция на тест, HTTP-клиент, фабрика пользователей."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import date
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -16,7 +17,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Base, User, UserRole
+from app.models import Base, ConstructionSite, SiteStatus, User, UserRole
 
 
 def _replace_db(url: str, db_name: str) -> str:
@@ -106,5 +107,35 @@ def make_user(db_session: AsyncSession) -> UserFactory:
         db_session.add(user)
         await db_session.commit()
         return user
+
+    return _make
+
+
+type SiteFactory = Callable[..., Awaitable[ConstructionSite]]
+
+
+@pytest.fixture
+def make_site(db_session: AsyncSession) -> SiteFactory:
+    counter = 0
+
+    async def _make(
+        *,
+        name: str | None = None,
+        status: SiteStatus = SiteStatus.ACTIVE,
+        foremen: list[User] | None = None,
+    ) -> ConstructionSite:
+        nonlocal counter
+        counter += 1
+        site = ConstructionSite(
+            name=name or f"ЖК Тестовый-{counter}",
+            address="г. Тестоград, ул. Строителей, 1",
+            start_date=date(2026, 1, 12),
+            planned_end_date=date(2027, 6, 30),
+            status=status,
+            foremen=foremen or [],
+        )
+        db_session.add(site)
+        await db_session.commit()
+        return site
 
     return _make
