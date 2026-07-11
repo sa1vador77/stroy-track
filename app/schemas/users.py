@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 from app.core.security import MIN_PASSWORD_LENGTH
 from app.models import UserRole
 from app.models.base import PG_BIGINT_MAX
+from app.schemas.base import no_null_updates
 
 
 def _lowercase_email(value: str | None) -> str | None:
@@ -42,10 +43,6 @@ class UserCreate(BaseModel):
         return self
 
 
-# nullable-колонки: null в PATCH означает «очистить значение»
-_CLEARABLE = {"email", "password", "telegram_id"}
-
-
 class UserUpdate(BaseModel):
     """Частичное обновление: применяются только присланные поля, null очищает значение."""
 
@@ -57,11 +54,4 @@ class UserUpdate(BaseModel):
     is_active: bool | None = None
 
     normalize_email = field_validator("email")(_lowercase_email)
-
-    @model_validator(mode="after")
-    def forbid_null_for_required(self) -> Self:
-        # для NOT NULL колонок явный null — ошибка клиента, а не «очистка»
-        for name in self.model_fields_set - _CLEARABLE:
-            if getattr(self, name) is None:
-                raise ValueError(f"поле {name} не может быть null")
-        return self
+    forbid_null = no_null_updates("email", "password", "telegram_id")

@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Base, ConstructionSite, SiteStatus, User, UserRole
+from app.models import Base, ConstructionSite, Crew, SiteStatus, User, UserRole
 
 
 def _replace_db(url: str, db_name: str) -> str:
@@ -137,5 +137,23 @@ def make_site(db_session: AsyncSession) -> SiteFactory:
         db_session.add(site)
         await db_session.commit()
         return site
+
+    return _make
+
+
+type CrewFactory = Callable[..., Awaitable[Crew]]
+
+
+@pytest.fixture
+def make_crew(db_session: AsyncSession) -> CrewFactory:
+    counter = 0
+
+    async def _make(site: ConstructionSite, *, name: str | None = None, size: int = 8) -> Crew:
+        nonlocal counter
+        counter += 1
+        crew = Crew(site_id=site.id, name=name or f"Бригада №{counter}", size=size)
+        db_session.add(crew)
+        await db_session.commit()
+        return crew
 
     return _make

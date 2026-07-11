@@ -56,3 +56,7 @@ def require_roles(*roles: UserRole) -> Callable[..., Coroutine[None, None, User]
         return user
 
     return check_role
+
+
+# офис — менеджер и админ: общий гейт управляющих эндпоинтов
+office_only = Depends(require_roles(UserRole.MANAGER, UserRole.ADMIN))

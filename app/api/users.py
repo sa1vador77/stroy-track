@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, PathID, SessionDep, require_roles
+from app.api.deps import CurrentUser, PathID, SessionDep, office_only, require_roles
 from app.core.security import hash_password
 from app.models import User, UserRole
 from app.schemas.users import UserCreate, UserOut, UserUpdate
@@ -16,8 +16,7 @@ from app.schemas.users import UserCreate, UserOut, UserUpdate
 # увольнение — это деактивация (is_active=false), история отчётов остаётся
 router = APIRouter(prefix="/users", tags=["users"])
 
-# чтение нужно и менеджеру — например, выбрать прораба для назначения на объект
-office_only = Depends(require_roles(UserRole.MANAGER, UserRole.ADMIN))
+# чтение (office_only) нужно и менеджеру — выбирать прорабов для назначения на объекты
 admin_only = Depends(require_roles(UserRole.ADMIN))
 
 

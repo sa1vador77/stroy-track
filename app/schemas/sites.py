@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models import SiteStatus
 from app.models.base import PG_INT_MAX
+from app.schemas.base import no_null_updates
 
 
 class ForemanOut(BaseModel):
@@ -54,13 +55,7 @@ class SiteUpdate(BaseModel):
     planned_end_date: date | None = None
     status: SiteStatus | None = None
 
-    @model_validator(mode="after")
-    def forbid_null(self) -> Self:
-        # у объекта нет очищаемых полей: явный null — всегда ошибка клиента
-        for name in self.model_fields_set:
-            if getattr(self, name) is None:
-                raise ValueError(f"поле {name} не может быть null")
-        return self
+    forbid_null = no_null_updates()
 
 
 class ForemanAssignment(BaseModel):

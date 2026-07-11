@@ -1,19 +1,17 @@
 """Стройплощадки: CRUD и назначение прорабов."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select, select
 
-from app.api.deps import CurrentUser, PathID, SessionDep, require_roles
+from app.api.deps import CurrentUser, PathID, SessionDep, office_only
 from app.models import ConstructionSite, User, UserRole, site_assignments
 from app.schemas.sites import ForemanAssignment, SiteCreate, SiteOut, SiteUpdate
 
-router = APIRouter(prefix="/sites", tags=["sites"])
-
 # читают объекты все роли (прораб — только свои), управляет офис
-office_only = Depends(require_roles(UserRole.MANAGER, UserRole.ADMIN))
+router = APIRouter(prefix="/sites", tags=["sites"])
 
 
 def _site_query() -> Select[tuple[ConstructionSite]]:
@@ -22,11 +20,17 @@ def _site_query() -> Select[tuple[ConstructionSite]]:
     return select(ConstructionSite).options(selectinload(ConstructionSite.foremen))
 
 
-async def _get_site_or_404(session: AsyncSession, site_id: int) -> ConstructionSite:
+async def get_site_or_404(session: AsyncSession, site_id: int) -> ConstructionSite:
     site = await session.scalar(_site_query().where(ConstructionSite.id == site_id))
     if site is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Объект не найден")
     return site
+
+
+def ensure_site_access(site: ConstructionSite, user: User) -> None:
+    """403 прорабу, не назначенному на объект; офис проходит всегда."""
+    if user.role == UserRole.FOREMAN and user.id not in {f.id for f in site.foremen}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Объект вам не назначен")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[office_only])
@@ -53,16 +57,15 @@ async def list_sites(session: SessionDep, user: CurrentUser) -> list[SiteOut]:
 @router.get("/{site_id}")
 async def get_site(site_id: PathID, session: SessionDep, user: CurrentUser) -> SiteOut:
     """Объект по id; прорабу доступны только его объекты."""
-    site = await _get_site_or_404(session, site_id)
-    if user.role == UserRole.FOREMAN and user.id not in {f.id for f in site.foremen}:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Объект вам не назначен")
+    site = await get_site_or_404(session, site_id)
+    ensure_site_access(site, user)
     return SiteOut.model_validate(site)
 
 
 @router.patch("/{site_id}", dependencies=[office_only])
 async def update_site(site_id: PathID, data: SiteUpdate, session: SessionDep) -> SiteOut:
     """Частичное обновление объекта."""
-    site = await _get_site_or_404(session, site_id)
+    site = await get_site_or_404(session, site_id)
     for name, value in data.model_dump(exclude_unset=True).items():
         setattr(site, name, value)
     # инвариант дат проверяется по итоговому состоянию: поля могли прийти поодиночке
@@ -75,7 +78,7 @@ async def update_site(site_id: PathID, data: SiteUpdate, session: SessionDep) ->
 @router.delete("/{site_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[office_only])
 async def delete_site(site_id: PathID, session: SessionDep) -> None:
     """Удалить объект; назначения, бригады, поставки и отчёты удаляет каскад в БД."""
-    site = await _get_site_or_404(session, site_id)
+    site = await get_site_or_404(session, site_id)
     await session.delete(site)
     await session.commit()
 
@@ -85,7 +88,7 @@ async def delete_site(site_id: PathID, session: SessionDep) -> None:
 )
 async def assign_foreman(site_id: PathID, data: ForemanAssignment, session: SessionDep) -> None:
     """Назначить прораба на объект."""
-    site = await _get_site_or_404(session, site_id)
+    site = await get_site_or_404(session, site_id)
     foreman = await session.get(User, data.user_id)
     if foreman is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
@@ -112,7 +115,7 @@ async def assign_foreman(site_id: PathID, data: ForemanAssignment, session: Sess
 )
 async def unassign_foreman(site_id: PathID, user_id: PathID, session: SessionDep) -> None:
     """Снять прораба с объекта."""
-    site = await _get_site_or_404(session, site_id)
+    site = await get_site_or_404(session, site_id)
     foreman = next((f for f in site.foremen if f.id == user_id), None)
     if foreman is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Назначение не найдено")
