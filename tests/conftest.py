@@ -17,7 +17,7 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Base, ConstructionSite, Crew, SiteStatus, User, UserRole
+from app.models import Base, ConstructionSite, Crew, Material, SiteStatus, User, UserRole
 
 
 def _replace_db(url: str, db_name: str) -> str:
@@ -137,6 +137,24 @@ def make_site(db_session: AsyncSession) -> SiteFactory:
         db_session.add(site)
         await db_session.commit()
         return site
+
+    return _make
+
+
+type MaterialFactory = Callable[..., Awaitable[Material]]
+
+
+@pytest.fixture
+def make_material(db_session: AsyncSession) -> MaterialFactory:
+    counter = 0
+
+    async def _make(*, name: str | None = None, unit: str = "т") -> Material:
+        nonlocal counter
+        counter += 1
+        material = Material(name=name or f"Материал №{counter}", unit=unit)
+        db_session.add(material)
+        await db_session.commit()
+        return material
 
     return _make
 
