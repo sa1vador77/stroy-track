@@ -36,5 +36,21 @@ services:
       retries: 3
       start_period: 10s
 
+  bot:
+    build: .
+    env_file:
+      - .env
+      # токен — только боту: из общего .env он утёк бы и в API-контейнер;
+      # без файла бот стартует и сам объясняет, что не хватает токена
+      - path: .env.bot
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+    command: python -m app.bot
+    # ждёт app, а не только postgres: миграции накатывает процесс API
+    depends_on:
+      app:
+        condition: service_healthy
+
 volumes:
   postgres_data:

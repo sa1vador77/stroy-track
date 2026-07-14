@@ -34,9 +34,11 @@ Swagger UI: http://localhost:8000/docs
 ```mermaid
 flowchart LR
     client["Клиент API<br/>(офис)"] -- "HTTPS + JWT" --> app
+    tg["Telegram<br/>(прорабы)"] <-- "long polling" --> bot
 
     subgraph compose["Docker Compose"]
         app["app · FastAPI<br/>alembic upgrade head при старте"] --> pg[("PostgreSQL 17")]
+        bot["bot · aiogram"] --> pg
     end
 ```
 
@@ -51,6 +53,7 @@ app/
 ├── core/         # конфиг, подключение к БД, безопасность, логирование
 ├── api/          # HTTP-слой: роутеры и зависимости (health, auth, users, sites,
 │                 #             crews, materials, deliveries, reports)
+├── bot/          # телеграм-бот прорабов: middleware, команды, точка входа
 ├── models/       # SQLAlchemy-модели предметной области
 └── schemas/      # Pydantic-схемы запросов и ответов
 migrations/       # Alembic (async), автогенерация против моделей

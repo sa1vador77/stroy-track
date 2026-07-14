@@ -13,7 +13,8 @@ _DEV_POSTGRES_PASSWORD = "stroytrack"
 class Settings(BaseSettings):
     """Настройки приложения. Читаются из переменных окружения и .env."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # .env.bot лежит отдельно: токен бота не попадает в окружение API-контейнера
+    model_config = SettingsConfigDict(env_file=(".env", ".env.bot"), extra="ignore")
 
     environment: Literal["local", "prod"] = "local"
     log_json: bool = False
@@ -21,6 +22,10 @@ class Settings(BaseSettings):
     # Дефолт только для локальной разработки; prod с ним не стартует (см. валидатор)
     secret_key: str = _DEV_SECRET_KEY
     access_token_expire_minutes: int = 60
+
+    # нужен только процессу бота, поэтому не обязателен: API и тесты живут без него,
+    # а бот сам падает на старте, если токена нет (app/bot/__main__.py)
+    bot_token: str | None = None
 
     @model_validator(mode="after")
     def forbid_weak_secrets_outside_local(self) -> Self:

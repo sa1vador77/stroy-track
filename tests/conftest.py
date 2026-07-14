@@ -61,17 +61,26 @@ async def engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    """Каждый тест — внутри внешней транзакции, которая откатывается в конце:
-    commit() в коде приложения работает через SAVEPOINT, база остаётся чистой."""
+async def db_session_factory(
+    engine: AsyncEngine,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    """Фабрика сессий на соединении с внешней транзакцией, откатываемой в конце теста:
+    commit() в коде приложения работает через SAVEPOINT, база остаётся чистой.
+    Её же инжектируют тесты бота — аналог подмены get_session у API."""
     async with engine.connect() as connection:
         transaction = await connection.begin()
-        factory = async_sessionmaker(
+        yield async_sessionmaker(
             bind=connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
         )
-        async with factory() as session:
-            yield session
         await transaction.rollback()
+
+
+@pytest.fixture
+async def db_session(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    async with db_session_factory() as session:
+        yield session
 
 
 @pytest.fixture

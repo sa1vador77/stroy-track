@@ -15,6 +15,7 @@ dependencies = [
     "pwdlib[argon2]>=0.2",
     "python-multipart>=0.0.18",
     "pydantic[email]>=2.13.4",
+    "aiogram>=3.15",
 ]
 
 [dependency-groups]
