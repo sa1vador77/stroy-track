@@ -1,35 +1,17 @@
 """Тесты каркаса бота: аутентификация по telegram_id и команда /start."""
 
-from collections.abc import AsyncIterator
-
 import pytest
 from aiogram import Bot, Dispatcher
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.dispatcher import create_dispatcher
 from app.models import User, UserRole
-from tests.conftest import SiteFactory, UserFactory
-from tests.fake_telegram import RecordingSession, channel_post_update, message_update
-
-FOREMAN_TG_ID = 100500
-
-
-@pytest.fixture
-def tg() -> RecordingSession:
-    """Сессия-перехватчик: в ней ассертятся исходящие сообщения бота."""
-    return RecordingSession()
-
-
-@pytest.fixture
-async def bot(tg: RecordingSession) -> AsyncIterator[Bot]:
-    bot = Bot(token="42:TEST", session=tg)
-    yield bot
-    await bot.session.close()
-
-
-@pytest.fixture
-def dp(db_session_factory: async_sessionmaker[AsyncSession]) -> Dispatcher:
-    return create_dispatcher(session_factory=db_session_factory)
+from tests.conftest import FOREMAN_TG_ID, SiteFactory, UserFactory
+from tests.fake_telegram import (
+    RecordingSession,
+    callback_update,
+    channel_post_update,
+    message_update,
+)
 
 
 @pytest.fixture
@@ -117,3 +99,21 @@ class TestStart:
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "привет"))
 
         assert tg.sent_messages == []
+
+    async def test_start_resets_report_dialog(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        make_site: SiteFactory,
+    ):
+        site = await make_site(name="ЖК Северный", foremen=[foreman])
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/report"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_site:{site.id}"))
+
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/start"))
+
+        # диалог сброшен: текст после /start больше не воспринимается как описание работ
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "Заливка фундамента"))
+        assert all("Сколько рабочих" not in m.text for m in tg.sent_messages)

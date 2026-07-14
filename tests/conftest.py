@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from aiogram import Bot, Dispatcher
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.bot.dispatcher import create_dispatcher
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
@@ -29,6 +31,7 @@ from app.models import (
     User,
     UserRole,
 )
+from tests.fake_telegram import RecordingSession
 
 
 def _replace_db(url: str, db_name: str) -> str:
@@ -93,6 +96,28 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     async with AsyncClient(transport=transport, base_url="http://test") as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+# Обвязка тестов бота; telegram_id прораба один на все бот-тесты
+FOREMAN_TG_ID = 100500
+
+
+@pytest.fixture
+def tg() -> RecordingSession:
+    """Сессия-перехватчик: в ней ассертятся исходящие сообщения бота."""
+    return RecordingSession()
+
+
+@pytest.fixture
+async def bot(tg: RecordingSession) -> AsyncIterator[Bot]:
+    bot = Bot(token="42:TEST", session=tg)
+    yield bot
+    await bot.session.close()
+
+
+@pytest.fixture
+def dp(db_session_factory: async_sessionmaker[AsyncSession]) -> Dispatcher:
+    return create_dispatcher(session_factory=db_session_factory)
 
 
 def auth_headers(user: User) -> dict[str, str]:

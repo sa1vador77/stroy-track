@@ -7,9 +7,9 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
-from aiogram.methods import SendMessage, TelegramMethod
+from aiogram.methods import AnswerCallbackQuery, SendMessage, TelegramMethod
 from aiogram.methods.base import TelegramType
-from aiogram.types import Chat, Message, Update
+from aiogram.types import CallbackQuery, Chat, Message, Update
 from aiogram.types import User as TgUser
 
 
@@ -24,6 +24,10 @@ class RecordingSession(BaseSession):
     def sent_messages(self) -> list[SendMessage]:
         return [m for m in self.requests if isinstance(m, SendMessage)]
 
+    @property
+    def callback_answers(self) -> list[AnswerCallbackQuery]:
+        return [m for m in self.requests if isinstance(m, AnswerCallbackQuery)]
+
     async def make_request(
         self, bot: Bot, method: TelegramMethod[TelegramType], timeout: int | None = None
     ) -> TelegramType:
@@ -35,6 +39,8 @@ class RecordingSession(BaseSession):
                 chat=Chat(id=method.chat_id, type="private"),
                 text=method.text,
             )
+        if isinstance(method, AnswerCallbackQuery):
+            return True
         raise AssertionError(f"тест не ожидал вызова Telegram API: {type(method).__name__}")
 
     async def close(self) -> None:
@@ -53,6 +59,36 @@ class RecordingSession(BaseSession):
 
 
 _update_ids = count(1)
+
+
+def non_text_message_update(tg_user_id: int) -> Update:
+    """Сообщение без текста (фото, стикер): message.text is None."""
+    update_id = next(_update_ids)
+    return Update(
+        update_id=update_id,
+        message=Message(
+            message_id=update_id,
+            date=datetime.now(UTC),
+            chat=Chat(id=tg_user_id, type="private"),
+            from_user=TgUser(id=tg_user_id, is_bot=False, first_name="Прораб"),
+        ),
+    )
+
+
+def callback_update(tg_user_id: int, data: str) -> Update:
+    """Нажатие inline-кнопки; message — то сообщение бота, под которым была кнопка."""
+    update_id = next(_update_ids)
+    chat = Chat(id=tg_user_id, type="private")
+    return Update(
+        update_id=update_id,
+        callback_query=CallbackQuery(
+            id=str(update_id),
+            from_user=TgUser(id=tg_user_id, is_bot=False, first_name="Прораб"),
+            chat_instance="test",
+            message=Message(message_id=update_id, date=datetime.now(UTC), chat=chat),
+            data=data,
+        ),
+    )
 
 
 def channel_post_update(channel_id: int, text: str) -> Update:

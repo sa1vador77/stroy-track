@@ -3,7 +3,7 @@
 from aiogram import Dispatcher
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.bot import commands
+from app.bot import commands, report
 from app.bot.middlewares import DbSessionMiddleware, ForemanAuthMiddleware
 from app.core import db
 
@@ -18,4 +18,6 @@ def create_dispatcher(
     dp.update.outer_middleware(DbSessionMiddleware(session_factory or db.session_factory))
     dp.update.outer_middleware(ForemanAuthMiddleware())
     dp.include_router(commands.create_router())
+    # report — последним: в его хвосте ловушка для устаревших кнопок
+    dp.include_router(report.create_router())
     return dp

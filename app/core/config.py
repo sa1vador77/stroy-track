@@ -2,8 +2,9 @@
 
 from functools import lru_cache
 from typing import Literal, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEV_SECRET_KEY = "dev-secret-change-me"
@@ -26,6 +27,25 @@ class Settings(BaseSettings):
     # нужен только процессу бота, поэтому не обязателен: API и тесты живут без него,
     # а бот сам падает на старте, если токена нет (app/bot/__main__.py)
     bot_token: str | None = None
+
+    # в этом поясе считается «сегодня» для отчётов: вечерний отчёт по UTC-дате
+    # уехал бы на другой день
+    company_tz: str = "Europe/Moscow"
+
+    @field_validator("company_tz")
+    @classmethod
+    def tz_must_exist(cls, value: str) -> str:
+        # неизвестный пояс валит процесс на старте, а не первый /report;
+        # ZoneInfoNotFoundError — наследник KeyError, pydantic оборачивает только ValueError
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise ValueError(f"Неизвестный часовой пояс: {value}") from None
+        return value
+
+    @property
+    def company_tzinfo(self) -> ZoneInfo:
+        return ZoneInfo(self.company_tz)
 
     @model_validator(mode="after")
     def forbid_weak_secrets_outside_local(self) -> Self:

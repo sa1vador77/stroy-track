@@ -2,6 +2,7 @@
 
 from aiogram import Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,8 +18,12 @@ def create_router() -> Router:
     return router
 
 
-async def cmd_start(message: Message, session: AsyncSession, foreman: User) -> None:
+async def cmd_start(
+    message: Message, state: FSMContext, session: AsyncSession, foreman: User
+) -> None:
     """Приветствие и список объектов прораба — сразу видно, что бот его узнал."""
+    # /start — привычный «сброс» бота: обрывает и незаконченный диалог отчёта
+    await state.clear()
     sites = (
         await session.scalars(
             select(ConstructionSite.name)
@@ -29,7 +34,9 @@ async def cmd_start(message: Message, session: AsyncSession, foreman: User) -> N
     ).all()
     if sites:
         site_lines = "\n".join(f"— {name}" for name in sites)
-        text = f"Здравствуйте, {foreman.full_name}!\nВаши объекты:\n{site_lines}"
+        text = (
+            f"Здравствуйте, {foreman.full_name}!\nВаши объекты:\n{site_lines}\nСдать отчёт: /report"
+        )
     else:
         text = f"Здравствуйте, {foreman.full_name}!\nВам пока не назначен ни один объект."
     await message.answer(text)

@@ -43,3 +43,14 @@ def test_local_allows_dev_defaults():
     settings = Settings(environment="local", _env_file=None)
 
     assert settings.secret_key == _DEV_SECRET_KEY
+
+
+def test_unknown_timezone_rejected():
+    with pytest.raises(ValidationError, match="company_tz"):
+        Settings(company_tz="Mars/Cydonia", _env_file=None)
+
+
+def test_company_tzinfo_resolves():
+    settings = Settings(_env_file=None)
+
+    assert settings.company_tzinfo.key == "Europe/Moscow"
