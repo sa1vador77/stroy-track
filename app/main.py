@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.api.auth import router as auth_router
 from app.api.crews import router as crews_router
+from app.api.deliveries import router as deliveries_router
 from app.api.health import router as health_router
 from app.api.materials import router as materials_router
 from app.api.sites import router as sites_router
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(sites_router)
     app.include_router(crews_router)
     app.include_router(materials_router)
+    app.include_router(deliveries_router)
     return app
 
 

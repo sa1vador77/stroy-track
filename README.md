@@ -49,7 +49,8 @@ app/
 ├── main.py       # сборка FastAPI-приложения
 ├── cli.py        # служебные команды: create-admin
 ├── core/         # конфиг, подключение к БД, безопасность, логирование
-├── api/          # HTTP-слой: роутеры и зависимости (health, auth, users, sites, crews, materials)
+├── api/          # HTTP-слой: роутеры и зависимости (health, auth, users, sites,
+│                 #             crews, materials, deliveries)
 ├── models/       # SQLAlchemy-модели предметной области
 └── schemas/      # Pydantic-схемы запросов и ответов
 migrations/       # Alembic (async), автогенерация против моделей

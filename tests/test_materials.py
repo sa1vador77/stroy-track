@@ -7,8 +7,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import DailyReport, MaterialDelivery, ReportMaterialUsage, User, UserRole
-from tests.conftest import MaterialFactory, SiteFactory, UserFactory, auth_headers
+from app.models import DailyReport, ReportMaterialUsage, User, UserRole
+from tests.conftest import DeliveryFactory, MaterialFactory, SiteFactory, UserFactory, auth_headers
 
 
 @pytest.fixture
@@ -218,20 +218,10 @@ class TestDeleteMaterial:
         manager: User,
         make_site: SiteFactory,
         make_material: MaterialFactory,
-        db_session: AsyncSession,
+        make_delivery: DeliveryFactory,
     ):
-        site = await make_site()
         material = await make_material()
-        db_session.add(
-            MaterialDelivery(
-                site_id=site.id,
-                material_id=material.id,
-                quantity=Decimal("2.5"),
-                delivery_date=date(2026, 7, 1),
-                supplier="СтройБаза №1",
-            )
-        )
-        await db_session.commit()
+        await make_delivery(await make_site(), material)
 
         response = await client.delete(f"/materials/{material.id}", headers=auth_headers(manager))
 

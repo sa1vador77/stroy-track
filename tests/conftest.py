@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import date
+from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +18,16 @@ from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.security import create_access_token, hash_password
 from app.main import app
-from app.models import Base, ConstructionSite, Crew, Material, SiteStatus, User, UserRole
+from app.models import (
+    Base,
+    ConstructionSite,
+    Crew,
+    Material,
+    MaterialDelivery,
+    SiteStatus,
+    User,
+    UserRole,
+)
 
 
 def _replace_db(url: str, db_name: str) -> str:
@@ -155,6 +165,33 @@ def make_material(db_session: AsyncSession) -> MaterialFactory:
         db_session.add(material)
         await db_session.commit()
         return material
+
+    return _make
+
+
+type DeliveryFactory = Callable[..., Awaitable[MaterialDelivery]]
+
+
+@pytest.fixture
+def make_delivery(db_session: AsyncSession) -> DeliveryFactory:
+    async def _make(
+        site: ConstructionSite,
+        material: Material,
+        *,
+        quantity: Decimal = Decimal("10"),
+        delivery_date: date = date(2026, 7, 1),
+        supplier: str = "СтройБаза №1",
+    ) -> MaterialDelivery:
+        delivery = MaterialDelivery(
+            site_id=site.id,
+            material_id=material.id,
+            quantity=quantity,
+            delivery_date=delivery_date,
+            supplier=supplier,
+        )
+        db_session.add(delivery)
+        await db_session.commit()
+        return delivery
 
     return _make
 
