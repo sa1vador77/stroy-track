@@ -22,6 +22,7 @@ from app.models import (
     Base,
     ConstructionSite,
     Crew,
+    DailyReport,
     Material,
     MaterialDelivery,
     SiteStatus,
@@ -192,6 +193,37 @@ def make_delivery(db_session: AsyncSession) -> DeliveryFactory:
         db_session.add(delivery)
         await db_session.commit()
         return delivery
+
+    return _make
+
+
+type ReportFactory = Callable[..., Awaitable[DailyReport]]
+
+
+@pytest.fixture
+def make_report(db_session: AsyncSession) -> ReportFactory:
+    async def _make(
+        site: ConstructionSite,
+        foreman: User,
+        *,
+        report_date: date = date(2026, 7, 1),
+        work_description: str = "Заливка фундамента",
+        workers_count: int = 8,
+    ) -> DailyReport:
+        # photos и material_usages инициализируются пустыми, как foremen у make_site:
+        # обращение к незагруженному relationship в asyncio упало бы
+        report = DailyReport(
+            site_id=site.id,
+            foreman_id=foreman.id,
+            report_date=report_date,
+            work_description=work_description,
+            workers_count=workers_count,
+            photos=[],
+            material_usages=[],
+        )
+        db_session.add(report)
+        await db_session.commit()
+        return report
 
     return _make
 

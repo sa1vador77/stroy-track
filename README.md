@@ -50,7 +50,7 @@ app/
 ├── cli.py        # служебные команды: create-admin
 ├── core/         # конфиг, подключение к БД, безопасность, логирование
 ├── api/          # HTTP-слой: роутеры и зависимости (health, auth, users, sites,
-│                 #             crews, materials, deliveries)
+│                 #             crews, materials, deliveries, reports)
 ├── models/       # SQLAlchemy-модели предметной области
 └── schemas/      # Pydantic-схемы запросов и ответов
 migrations/       # Alembic (async), автогенерация против моделей
