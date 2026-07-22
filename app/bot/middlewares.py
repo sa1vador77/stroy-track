@@ -3,12 +3,15 @@
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+import structlog
 from aiogram import BaseMiddleware
 from aiogram.types import TelegramObject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models import User, UserRole
+
+log = structlog.get_logger()
 
 
 class DbSessionMiddleware(BaseMiddleware):
@@ -49,6 +52,7 @@ class ForemanAuthMiddleware(BaseMiddleware):
         session: AsyncSession = data["session"]
         user = await session.scalar(select(User).where(User.telegram_id == tg_user.id))
         if user is None:
+            log.info("bot_access_denied", reason="unknown_telegram_id", telegram_id=tg_user.id)
             # подсказываем ID для онбординга: офис впишет его в карточку прораба
             await data["bot"].send_message(
                 tg_user.id,
@@ -57,6 +61,12 @@ class ForemanAuthMiddleware(BaseMiddleware):
             )
             return None
         if not user.is_active or user.role != UserRole.FOREMAN:
+            log.info(
+                "bot_access_denied",
+                reason="not_active_foreman",
+                telegram_id=tg_user.id,
+                user_id=user.id,
+            )
             await data["bot"].send_message(tg_user.id, "Бот доступен только действующим прорабам.")
             return None
         data["foreman"] = user

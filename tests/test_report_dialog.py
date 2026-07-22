@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog.testing import capture_logs
 
 from app.core.config import get_settings
 from app.models import ConstructionSite, DailyReport, User
@@ -98,6 +99,23 @@ class TestDialogSteps:
         assert report.report_date == datetime.now(get_settings().company_tzinfo).date()
         assert report.work_description == "Заливка фундамента"
         assert report.workers_count == 8
+
+    async def test_accepted_report_is_logged(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        foreman: User,
+        site: ConstructionSite,
+    ):
+        await _walk_to_confirmation(dp, bot, site)
+
+        with capture_logs() as logs:
+            await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        [accepted] = [entry for entry in logs if entry["event"] == "report_accepted"]
+        assert accepted["site_id"] == site.id
+        assert accepted["foreman_id"] == foreman.id
+        assert accepted["replaced"] is False
 
     async def test_foreign_site_button_rejected(
         self,
@@ -303,12 +321,15 @@ class TestReplaceAndRaces:
 
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "Новый отчёт"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
-        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+        with capture_logs() as logs:
+            await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
 
         reports = (await db_session.scalars(select(DailyReport))).all()
         assert len(reports) == 1
         assert reports[0].id != old.id
         assert reports[0].work_description == "Новый отчёт"
+        [accepted] = [entry for entry in logs if entry["event"] == "report_accepted"]
+        assert accepted["replaced"] is True
 
     async def test_unassigned_during_dialog_not_saved(
         self,
@@ -323,10 +344,13 @@ class TestReplaceAndRaces:
         site.foremen.remove(foreman)
         await db_session.commit()
 
-        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+        with capture_logs() as logs:
+            await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
 
         assert "больше не назначен" in tg.sent_messages[-1].text
         assert (await db_session.scalars(select(DailyReport))).all() == []
+        [rejected] = [entry for entry in logs if entry["event"] == "report_rejected"]
+        assert rejected["reason"] == "site_unassigned"
 
     async def test_site_deleted_race_not_saved(
         self,
@@ -346,11 +370,15 @@ class TestReplaceAndRaces:
         # гонку «объект удалили между проверкой и commit» данными не воспроизвести —
         # роняем сам commit, как это сделала бы БД
         monkeypatch.setattr(AsyncSession, "commit", _fk_violation)
-        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+        with capture_logs() as logs:
+            await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
         monkeypatch.undo()
 
         assert "Объект уже удалён" in tg.sent_messages[-1].text
         assert (await db_session.scalars(select(DailyReport))).all() == []
+        [rejected] = [entry for entry in logs if entry["event"] == "report_rejected"]
+        assert rejected["reason"] == "site_deleted"
+        assert rejected["log_level"] == "warning"
         # состояние очищено: повторный сабмит — уже устаревшая кнопка
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
         assert "устарела" in tg.callback_answers[-1].text

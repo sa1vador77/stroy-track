@@ -3,6 +3,7 @@
 import pytest
 from aiogram import Bot, Dispatcher
 from sqlalchemy.ext.asyncio import AsyncSession
+from structlog.testing import capture_logs
 
 from app.models import User, UserRole
 from tests.conftest import FOREMAN_TG_ID, SiteFactory, UserFactory
@@ -27,6 +28,14 @@ class TestAuth:
         assert "не зарегистрированы" in message.text
         # свой ID пользователю больше взять неоткуда — его сообщает бот
         assert "999" in message.text
+
+    async def test_unknown_user_denial_is_logged(self, dp: Dispatcher, bot: Bot):
+        with capture_logs() as logs:
+            await dp.feed_update(bot, message_update(999, "/start"))
+
+        [denied] = [entry for entry in logs if entry["event"] == "bot_access_denied"]
+        assert denied["reason"] == "unknown_telegram_id"
+        assert denied["telegram_id"] == 999
 
     async def test_update_without_sender_ignored(
         self, dp: Dispatcher, bot: Bot, tg: RecordingSession
@@ -56,10 +65,14 @@ class TestAuth:
         foreman.is_active = False
         await db_session.commit()
 
-        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/start"))
+        with capture_logs() as logs:
+            await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/start"))
 
         [message] = tg.sent_messages
         assert "только действующим прорабам" in message.text
+        [denied] = [entry for entry in logs if entry["event"] == "bot_access_denied"]
+        assert denied["reason"] == "not_active_foreman"
+        assert denied["user_id"] == foreman.id
 
 
 class TestStart:

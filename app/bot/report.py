@@ -2,6 +2,7 @@
 
 from datetime import date, datetime
 
+import structlog
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -29,6 +30,8 @@ _SITE_PREFIX = "report_site:"
 _SUBMIT = "report:submit"
 _RESTART = "report:restart"
 _CANCEL = "report:cancel"
+
+log = structlog.get_logger()
 
 
 def create_router() -> Router:
@@ -180,6 +183,12 @@ async def submitted(
     site = await _get_assigned_site(session, foreman, data["site_id"])
     if site is None:
         # назначение сняли, пока прораб заполнял отчёт
+        log.info(
+            "report_rejected",
+            reason="site_unassigned",
+            site_id=data["site_id"],
+            foreman_id=foreman.id,
+        )
         await state.clear()
         await callback.message.answer("Объект вам больше не назначен — отчёт не сохранён.")
         await callback.answer()
@@ -187,7 +196,7 @@ async def submitted(
     report_date = _today()
     # свой отчёт за сегодня заменяется: прораб предупреждён при выборе объекта,
     # детали старого отчёта удаляет каскад в БД
-    await session.execute(
+    deleted = await session.execute(
         delete(DailyReport).where(
             DailyReport.site_id == site.id,
             DailyReport.foreman_id == foreman.id,
@@ -209,10 +218,20 @@ async def submitted(
         await session.commit()
     except IntegrityError:
         # гонка с офисом: объект удалили между проверкой и записью
+        log.warning(
+            "report_rejected", reason="site_deleted", site_id=site.id, foreman_id=foreman.id
+        )
         await state.clear()
         await callback.message.answer("Объект уже удалён — отчёт не сохранён.")
         await callback.answer()
         return
+    log.info(
+        "report_accepted",
+        site_id=site.id,
+        foreman_id=foreman.id,
+        report_date=report_date.isoformat(),
+        replaced=deleted.rowcount > 0,
+    )
     await state.clear()
     await callback.message.answer(f"Отчёт принят: {site.name}, {report_date:%d.%m.%Y}.")
     await callback.answer()
