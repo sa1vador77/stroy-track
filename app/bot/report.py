@@ -1,10 +1,12 @@
-"""Диалог сдачи отчёта: /report — объект, работы, численность, материалы, запись."""
+"""Диалог сдачи отчёта: /report — объект, работы, численность, материалы, фото, запись."""
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from uuid import uuid4
 
 import structlog
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -19,6 +21,7 @@ from app.models import (
     DailyReport,
     Material,
     ReportMaterialUsage,
+    ReportPhoto,
     User,
     site_assignments,
 )
@@ -33,18 +36,24 @@ class ReportDialog(StatesGroup):
     entering_workers = State()
     choosing_material = State()
     entering_quantity = State()
+    adding_photos = State()
     confirming = State()
 
 
 _SITE_PREFIX = "report_site:"
 _MATERIAL_PREFIX = "report_material:"
 _MATERIALS_DONE = "report:materials_done"
+_PHOTOS_DONE = "report:photos_done"
 _SUBMIT = "report:submit"
 _RESTART = "report:restart"
 _CANCEL = "report:cancel"
 
 # зеркалит Numeric(12, 3): девять знаков до запятой, три после
 _QUANTITY_MAX = Decimal(10) ** 9
+
+# до подтверждения фото живут в FSM как file_id и скачиваются только на
+# «Отправить»: брошенный диалог не оставляет мусора на диске
+_MAX_PHOTOS = 5
 
 log = structlog.get_logger()
 
@@ -56,6 +65,7 @@ def create_router() -> Router:
     router.message.register(description_entered, StateFilter(ReportDialog.entering_description))
     router.message.register(workers_entered, StateFilter(ReportDialog.entering_workers))
     router.message.register(quantity_entered, StateFilter(ReportDialog.entering_quantity))
+    router.message.register(photo_received, StateFilter(ReportDialog.adding_photos))
     router.callback_query.register(
         site_chosen, StateFilter(ReportDialog.choosing_site), F.data.startswith(_SITE_PREFIX)
     )
@@ -64,6 +74,9 @@ def create_router() -> Router:
         material_chosen, choosing_material, F.data.startswith(_MATERIAL_PREFIX)
     )
     router.callback_query.register(materials_done, choosing_material, F.data == _MATERIALS_DONE)
+    router.callback_query.register(
+        photos_done, StateFilter(ReportDialog.adding_photos), F.data == _PHOTOS_DONE
+    )
     confirming = StateFilter(ReportDialog.confirming)
     router.callback_query.register(submitted, confirming, F.data == _SUBMIT)
     router.callback_query.register(restarted, confirming, F.data == _RESTART)
@@ -148,6 +161,8 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
         lines += [
             f"— {m['name']}: {_format_quantity(m['quantity'])} {m['unit']}" for m in materials
         ]
+    if photos := data.get("photos", []):
+        lines.append(f"Фото: {len(photos)}")
     await message.answer("\n".join(lines), reply_markup=_confirm_keyboard())
 
 
@@ -230,7 +245,7 @@ async def workers_entered(message: Message, state: FSMContext, session: AsyncSes
     materials = await _all_materials(session)
     if not materials:
         # справочник пуст — шаг материалов показывать не с чем
-        await _show_confirmation(message, state)
+        await _ask_photos(message, state)
         return
     await state.set_state(ReportDialog.choosing_material)
     await message.answer(
@@ -301,6 +316,44 @@ async def quantity_entered(message: Message, state: FSMContext, session: AsyncSe
 
 
 async def materials_done(callback: CallbackQuery, state: FSMContext) -> None:
+    await _ask_photos(callback.message, state)
+    await callback.answer()
+
+
+async def _ask_photos(message: Message, state: FSMContext) -> None:
+    await state.set_state(ReportDialog.adding_photos)
+    await message.answer(
+        f"Пришлите фото с объекта — до {_MAX_PHOTOS} штук, по одному. Когда всё — жмите «Готово».",
+        reply_markup=_photos_keyboard(),
+    )
+
+
+def _photos_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Готово", callback_data=_PHOTOS_DONE)],
+            [InlineKeyboardButton(text="Отмена", callback_data=_CANCEL)],
+        ]
+    )
+
+
+async def photo_received(message: Message, state: FSMContext) -> None:
+    if not message.photo:
+        await message.answer("Пришлите фото как изображение или жмите «Готово».")
+        return
+    data = await state.get_data()
+    photos: list[str] = data.get("photos", [])
+    # message.photo — одно фото в нескольких размерах, последний самый крупный
+    photos.append(message.photo[-1].file_id)
+    await state.update_data(photos=photos)
+    if len(photos) >= _MAX_PHOTOS:
+        await message.answer(f"Принято {len(photos)} фото — это максимум.")
+        await _show_confirmation(message, state)
+        return
+    await message.answer(f"Фото {len(photos)}/{_MAX_PHOTOS} принято.")
+
+
+async def photos_done(callback: CallbackQuery, state: FSMContext) -> None:
     await _show_confirmation(callback.message, state)
     await callback.answer()
 
@@ -324,6 +377,28 @@ async def submitted(
         await callback.answer()
         return
     report_date = _today()
+    # фото качаются до открытия транзакции: сеть медленная, а транзакция — нет
+    try:
+        photo_paths = await _download_photos(callback.bot, data.get("photos", []))
+    except Exception:
+        # сеть, диск или Telegram — прорабу без разницы: скачанное подчищено,
+        # состояние не тронуто, можно нажать «Отправить» ещё раз
+        log.warning("photo_download_failed", site_id=data["site_id"], exc_info=True)
+        await callback.message.answer("Не удалось получить фото — нажмите «Отправить» ещё раз.")
+        await callback.answer()
+        return
+    # файлы заменяемого отчёта: строки снесёт каскад, диск чистим сами после коммита
+    old_photo_names = (
+        await session.scalars(
+            select(ReportPhoto.file_path)
+            .join(DailyReport)
+            .where(
+                DailyReport.site_id == site.id,
+                DailyReport.foreman_id == foreman.id,
+                DailyReport.report_date == report_date,
+            )
+        )
+    ).all()
     # свой отчёт за сегодня заменяется: прораб предупреждён при выборе объекта,
     # детали старого отчёта удаляет каскад в БД
     deleted = await session.execute(
@@ -341,7 +416,7 @@ async def submitted(
             report_date=report_date,
             work_description=data["work_description"],
             workers_count=data["workers_count"],
-            photos=[],
+            photos=[ReportPhoto(file_path=path.name) for path in photo_paths],
             material_usages=[
                 ReportMaterialUsage(material_id=m["material_id"], quantity=Decimal(m["quantity"]))
                 for m in usages
@@ -355,6 +430,7 @@ async def submitted(
         await session.commit()
     except IntegrityError:
         # гонка с офисом: объект или материал удалили, пока прораб заполнял отчёт
+        _remove_files(photo_paths)
         log.warning(
             "report_rejected",
             reason="site_or_material_deleted",
@@ -365,6 +441,9 @@ async def submitted(
         await callback.message.answer("Объект или материал уже удалены — отчёт не сохранён.")
         await callback.answer()
         return
+    # только после успешного коммита: при откате старый отчёт остаётся жить
+    # вместе со своими файлами
+    _remove_files([get_settings().upload_dir / name for name in old_photo_names])
     log.info(
         "report_accepted",
         site_id=site.id,
@@ -372,6 +451,7 @@ async def submitted(
         report_date=report_date.isoformat(),
         replaced=deleted.rowcount > 0,
         materials_count=len(usages),
+        photos_count=len(photo_paths),
     )
     await state.clear()
     await callback.message.answer(f"Отчёт принят: {site.name}, {report_date:%d.%m.%Y}.")
@@ -399,6 +479,33 @@ async def stale_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer("Кнопка устарела — продолжайте текущий шаг", show_alert=True)
         return
     await callback.answer("Кнопка устарела — начните заново: /report", show_alert=True)
+
+
+async def _download_photos(bot: Bot, file_ids: list[str]) -> list[Path]:
+    """Скачивает фото отчёта на диск; при сбое подчищает уже скачанное."""
+    if not file_ids:
+        return []
+    upload_dir = get_settings().upload_dir
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for file_id in file_ids:
+        # имя своё, не из Telegram: file_id длинный и небезопасный для ФС
+        path = upload_dir / f"{uuid4().hex}.jpg"
+        try:
+            await bot.download(file_id, destination=path)
+        except Exception:
+            # рвётся не только Telegram API: обрыв стрима — aiohttp/таймаут,
+            # запись — OSError; подчищаем и недокачанный файл, и предыдущие
+            path.unlink(missing_ok=True)
+            _remove_files(paths)
+            raise
+        paths.append(path)
+    return paths
+
+
+def _remove_files(paths: list[Path]) -> None:
+    for path in paths:
+        path.unlink(missing_ok=True)
 
 
 async def _get_assigned_site(

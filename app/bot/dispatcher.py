@@ -1,6 +1,7 @@
 """Сборка диспетчера: middleware в нужном порядке и роутеры команд."""
 
 from aiogram import Dispatcher
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot import commands, report
@@ -12,7 +13,10 @@ def create_dispatcher(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> Dispatcher:
     """Фабрика вместо модульного диспетчера: тесты передают свою фабрику сессий."""
-    dp = Dispatcher()
+    # изоляция сериализует апдейты одного чата: без неё альбом фото прилетает
+    # пачкой конкурентных задач, каждая видит старое состояние FSM — лимиты
+    # и переходы диалога перестают работать
+    dp = Dispatcher(events_isolation=SimpleEventIsolation())
     # outer-middleware на dp.update видят каждый апдейт до фильтров;
     # порядок обязателен: auth берёт сессию, открытую session-middleware
     dp.update.outer_middleware(DbSessionMiddleware(session_factory or db.session_factory))

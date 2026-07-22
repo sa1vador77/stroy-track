@@ -1,6 +1,7 @@
 """Настройки приложения: переменные окружения, .env, DSN базы."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -27,6 +28,10 @@ class Settings(BaseSettings):
     # нужен только процессу бота, поэтому не обязателен: API и тесты живут без него,
     # а бот сам падает на старте, если токена нет (app/bot/__main__.py)
     bot_token: str | None = None
+
+    # фото из отчётов; в контейнере сюда примонтирован том, в БД хранятся
+    # имена файлов относительно каталога — переезд тома не ломает данные
+    upload_dir: Path = Path("uploads")
 
     # в этом поясе считается «сегодня» для отчётов: вечерний отчёт по UTC-дате
     # уехал бы на другой день

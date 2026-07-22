@@ -47,6 +47,9 @@ services:
     environment:
       POSTGRES_HOST: postgres
     command: python -m app.bot
+    # фото отчётов переживают пересоздание контейнера
+    volumes:
+      - uploads:/srv/stroytrack/uploads
     # ждёт app, а не только postgres: миграции накатывает процесс API
     depends_on:
       app:
@@ -54,3 +57,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads:

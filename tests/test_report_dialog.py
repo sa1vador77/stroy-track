@@ -1,7 +1,9 @@
 """Тесты диалога /report: шаги FSM, валидации, запись отчёта, отмена и замена."""
 
+import asyncio
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from aiogram import Bot, Dispatcher
@@ -15,10 +17,12 @@ from app.core.config import get_settings
 from app.models import ConstructionSite, DailyReport, User
 from tests.conftest import FOREMAN_TG_ID, MaterialFactory, ReportFactory, SiteFactory, UserFactory
 from tests.fake_telegram import (
+    FAKE_JPEG,
     RecordingSession,
     callback_update,
     message_update,
     non_text_message_update,
+    photo_message_update,
 )
 
 
@@ -36,13 +40,19 @@ def _today_str() -> str:
     return f"{datetime.now(get_settings().company_tzinfo).date():%d.%m.%Y}"
 
 
-async def _walk_to_confirmation(dp: Dispatcher, bot: Bot, site: ConstructionSite) -> None:
-    """Прогоняет диалог за шаг численности: сводка, а при непустом
-    справочнике материалов — их выбор."""
+async def _fill_basics(dp: Dispatcher, bot: Bot, site: ConstructionSite) -> None:
+    """Текстовые шаги: /report → объект → работы → численность. Дальше диалог
+    на шаге материалов (при непустом справочнике) или фото."""
     await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/report"))
     await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_site:{site.id}"))
     await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "Заливка фундамента"))
     await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "8"))
+
+
+async def _walk_to_confirmation(dp: Dispatcher, bot: Bot, site: ConstructionSite) -> None:
+    """До сводки при пустом справочнике материалов: текстовые шаги + пропуск фото."""
+    await _fill_basics(dp, bot, site)
+    await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
 
 class TestReportStart:
@@ -197,7 +207,7 @@ class TestDialogSteps:
         assert reply in tg.sent_messages[-1].text
         # после переспроса корректный ввод продолжает диалог
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "8"))
-        assert "Проверьте отчёт" in tg.sent_messages[-1].text
+        assert "Пришлите фото" in tg.sent_messages[-1].text
 
     async def test_report_over_unfinished_dialog_starts_fresh(
         self,
@@ -221,6 +231,7 @@ class TestDialogSteps:
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_site:{other.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "Новое описание"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "3"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
 
         [report] = (await db_session.scalars(select(DailyReport))).all()
@@ -241,7 +252,7 @@ class TestMaterialsInDialog:
         await make_material(name="Цемент М500", unit="т")
         sand = await make_material(name="Песок", unit="м3")
 
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
 
         prompt = tg.sent_messages[-1]
         assert "Какие материалы израсходовали" in prompt.text
@@ -262,7 +273,7 @@ class TestMaterialsInDialog:
         cement = await make_material(name="Цемент М500", unit="т")
         sand = await make_material(name="Песок", unit="м3")
 
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{cement.id}"))
         assert "Например: 2,5" in tg.sent_messages[-1].text
 
@@ -272,6 +283,7 @@ class TestMaterialsInDialog:
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{sand.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "10"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
         summary = tg.sent_messages[-1]
         assert "Материалы:" in summary.text
@@ -302,8 +314,9 @@ class TestMaterialsInDialog:
     ):
         await make_material()
 
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
         assert "Материалы" not in tg.sent_messages[-1].text
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
@@ -336,7 +349,7 @@ class TestMaterialsInDialog:
         reply: str,
     ):
         material = await make_material(name="Цемент", unit="т")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{material.id}"))
 
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, text))
@@ -358,12 +371,13 @@ class TestMaterialsInDialog:
     ):
         cement = await make_material(name="Цемент", unit="т")
 
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{cement.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{cement.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "7"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
         summary = tg.sent_messages[-1]
         assert summary.text.count("Цемент") == 1
@@ -390,7 +404,7 @@ class TestMaterialsInDialog:
         make_material: MaterialFactory,
     ):
         await make_material(name="Цемент")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
 
         # мусор и несуществующий id получают один и тот же отказ
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report_material:мусор"))
@@ -414,10 +428,11 @@ class TestMaterialsInDialog:
     ):
         cement = await make_material(name="Цемент", unit="т")
 
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{cement.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
         await db_session.delete(cement)
         await db_session.commit()
 
@@ -450,7 +465,7 @@ class TestMaterialsInDialog:
         shown: str,
     ):
         material = await make_material(name="Цемент", unit="т")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{material.id}"))
 
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, text))
@@ -468,10 +483,11 @@ class TestMaterialsInDialog:
         db_session: AsyncSession,
     ):
         material = await make_material(name="Цемент", unit="т")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{material.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
         # кнопка материала из старого сообщения на шаге сводки: диалог жив,
         # совет «начните заново» здесь навредил бы
@@ -494,14 +510,16 @@ class TestMaterialsInDialog:
         db_session: AsyncSession,
     ):
         material = await make_material(name="Цемент", unit="т")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{material.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
 
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:restart"))
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
 
         report = await db_session.scalar(
@@ -520,7 +538,7 @@ class TestMaterialsInDialog:
         db_session: AsyncSession,
     ):
         material = await make_material(name="Цемент", unit="т")
-        await _walk_to_confirmation(dp, bot, site)
+        await _fill_basics(dp, bot, site)
         await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{material.id}"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
 
@@ -544,6 +562,334 @@ class TestMaterialsInDialog:
 
         assert all("Какие материалы" not in m.text for m in tg.sent_messages)
         assert "Проверьте отчёт" in tg.sent_messages[-1].text
+
+
+@pytest.fixture
+def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Фото уходят во временный каталог вместо ./uploads."""
+    path = tmp_path / "uploads"
+    monkeypatch.setattr(get_settings(), "upload_dir", path)
+    return path
+
+
+class TestPhotosInDialog:
+    async def test_photos_step_offered_after_workers(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+    ):
+        await _fill_basics(dp, bot, site)
+
+        prompt = tg.sent_messages[-1]
+        assert "Пришлите фото" in prompt.text
+        buttons = [b for row in prompt.reply_markup.inline_keyboard for b in row]
+        assert [b.text for b in buttons] == ["Готово", "Отмена"]
+
+    async def test_happy_path_with_photos(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "p1"))
+        assert "Фото 1/5 принято" in tg.sent_messages[-1].text
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "p2"))
+        assert "Фото 2/5 принято" in tg.sent_messages[-1].text
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+        assert "Фото: 2" in tg.sent_messages[-1].text
+
+        with capture_logs() as logs:
+            await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        assert "Отчёт принят" in tg.sent_messages[-1].text
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert len(report.photos) == 2
+        for photo in report.photos:
+            # в БД имя файла, а не путь: переезд каталога не ломает записи
+            assert "/" not in photo.file_path
+            assert (upload_dir / photo.file_path).read_bytes() == FAKE_JPEG
+        [accepted] = [entry for entry in logs if entry["event"] == "report_accepted"]
+        assert accepted["photos_count"] == 2
+
+    async def test_photo_limit_advances_to_confirmation(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+        for i in range(5):
+            await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, f"p{i}"))
+
+        assert "Принято 5 фото — это максимум" in tg.sent_messages[-2].text
+        assert "Проверьте отчёт" in tg.sent_messages[-1].text
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert len(report.photos) == 5
+
+    async def test_non_photo_message_hint(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+    ):
+        await _fill_basics(dp, bot, site)
+
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "готово"))
+
+        assert "Пришлите фото как изображение" in tg.sent_messages[-1].text
+
+    async def test_skip_photos_no_files_created(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _walk_to_confirmation(dp, bot, site)
+        assert "Фото" not in tg.sent_messages[-1].text
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert report.photos == []
+        assert not upload_dir.exists()
+
+    async def test_cancel_leaves_no_files(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID))
+
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "/cancel"))
+
+        assert "отменена" in tg.sent_messages[-1].text
+        # до «Отправить» фото существуют только как file_id — чистить нечего
+        assert not upload_dir.exists()
+        assert (await db_session.scalars(select(DailyReport))).all() == []
+
+    async def test_files_removed_when_submit_races_with_deletion(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+
+        async def _fk_violation(_self: AsyncSession) -> None:
+            raise IntegrityError("INSERT INTO daily_reports ...", {}, Exception("fk"))
+
+        # без monkeypatch.undo(): он снял бы и подмену upload_dir из фикстуры
+        monkeypatch.setattr(AsyncSession, "commit", _fk_violation)
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        assert "уже удалены — отчёт не сохранён" in tg.sent_messages[-1].text
+        # скачанное фото не осиротело на диске после отката
+        assert list(upload_dir.iterdir()) == []
+
+    async def test_download_failure_allows_retry(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "p1"))
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "p2"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+
+        real_stream = RecordingSession.stream_content
+        calls = {"count": 0}
+
+        # сеть рвётся ровно на втором скачивании — не в Telegram API, а в стриме
+        # байтов, поэтому ошибка не TelegramAPIError; monkeypatch.undo() нельзя:
+        # он снял бы и подмену upload_dir из соседней фикстуры
+        async def flaky_stream(self: RecordingSession, url: str, **kwargs: object):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise RuntimeError("обрыв сети")
+            async for chunk in real_stream(self, url, **kwargs):
+                yield chunk
+
+        monkeypatch.setattr(RecordingSession, "stream_content", flaky_stream)
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        assert "Не удалось получить фото" in tg.sent_messages[-1].text
+        assert (await db_session.scalars(select(DailyReport))).all() == []
+        # частично скачанное подчищено
+        assert list(upload_dir.iterdir()) == []
+
+        # состояние сохранено — повторный «Отправить» доводит отчёт до записи
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        assert "Отчёт принят" in tg.sent_messages[-1].text
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert len(report.photos) == 2
+        assert len(list(upload_dir.iterdir())) == 2
+
+    async def test_restart_drops_photos(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:restart"))
+        await _walk_to_confirmation(dp, bot, site)
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert report.photos == []
+        assert not upload_dir.exists()
+
+    async def test_album_over_limit_is_serialized(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+
+        # альбом: пачка апдейтов приходит одновременно; изоляция FSM обязана
+        # сериализовать их, иначе каждый видит старое состояние и лимит рвётся
+        await asyncio.gather(
+            *(dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, f"a{i}")) for i in range(7))
+        )
+
+        assert sum("Проверьте отчёт" in m.text for m in tg.sent_messages) == 1
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        report = await db_session.scalar(
+            select(DailyReport).options(selectinload(DailyReport.photos))
+        )
+        assert len(report.photos) == 5
+
+    async def test_replacement_removes_old_photo_files(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "old"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+        [old_file] = list(upload_dir.iterdir())
+
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID, "new"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        [report] = (
+            await db_session.scalars(select(DailyReport).options(selectinload(DailyReport.photos)))
+        ).all()
+        [photo] = report.photos
+        # файл старого отчёта удалён после коммита замены, остался только новый
+        [remaining] = list(upload_dir.iterdir())
+        assert remaining.name == photo.file_path
+        assert remaining != old_file
+
+    async def test_materials_then_photos_full_flow(
+        self,
+        dp: Dispatcher,
+        bot: Bot,
+        tg: RecordingSession,
+        foreman: User,
+        site: ConstructionSite,
+        make_material: MaterialFactory,
+        db_session: AsyncSession,
+        upload_dir: Path,
+    ):
+        cement = await make_material(name="Цемент", unit="т")
+
+        await _fill_basics(dp, bot, site)
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, f"report_material:{cement.id}"))
+        await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "2,5"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:materials_done"))
+        assert "Пришлите фото" in tg.sent_messages[-1].text
+
+        await dp.feed_update(bot, photo_message_update(FOREMAN_TG_ID))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
+
+        summary = tg.sent_messages[-1].text
+        assert "— Цемент: 2,5 т" in summary
+        assert "Фото: 1" in summary
+
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
+
+        report = await db_session.scalar(
+            select(DailyReport).options(
+                selectinload(DailyReport.photos), selectinload(DailyReport.material_usages)
+            )
+        )
+        assert len(report.photos) == 1
+        assert len(report.material_usages) == 1
 
 
 class TestCancelAndRestart:
@@ -643,6 +989,7 @@ class TestReplaceAndRaces:
 
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "Новый отчёт"))
         await dp.feed_update(bot, message_update(FOREMAN_TG_ID, "5"))
+        await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:photos_done"))
         with capture_logs() as logs:
             await dp.feed_update(bot, callback_update(FOREMAN_TG_ID, "report:submit"))
 

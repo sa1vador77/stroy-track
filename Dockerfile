@@ -20,8 +20,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PATH="/srv/stroytrack/.venv/bin:$PATH"
 
-# приложению запись на диск не нужна — работаем не от root
-RUN groupadd -r app && useradd -r -g app app
+# работаем не от root; писать можно только в uploads/ — каталог создаётся
+# и передаётся пользователю app заранее, потом прав на это уже нет
+RUN groupadd -r app && useradd -r -g app app \
+    && mkdir uploads && chown app:app uploads
 USER app
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
