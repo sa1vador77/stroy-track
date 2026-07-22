@@ -14,7 +14,7 @@ from app.core.logging import configure_logging
 async def main() -> None:
     settings = get_settings()
     if not settings.bot_token:
-        sys.exit("BOT_TOKEN не задан — получите токен у @BotFather и добавьте в .env")
+        sys.exit("BOT_TOKEN не задан в .env.bot")
     configure_logging(json_logs=settings.log_json)
     bot = Bot(token=settings.bot_token)
     try:
