@@ -31,6 +31,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.web.deps import ACCESS_COOKIE
 from tests.fake_telegram import RecordingSession
 
 
@@ -123,6 +124,11 @@ def dp(db_session_factory: async_sessionmaker[AsyncSession]) -> Dispatcher:
 def auth_headers(user: User) -> dict[str, str]:
     """Authorization-заголовок от имени пользователя — токен куётся напрямую, минуя /auth/login."""
     return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+def web_cookies(user: User) -> dict[str, str]:
+    """Cookie дашборда от имени пользователя — минуя форму логина."""
+    return {ACCESS_COOKIE: create_access_token(user.id)}
 
 
 type UserFactory = Callable[..., Awaitable[User]]

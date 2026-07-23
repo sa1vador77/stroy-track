@@ -16,6 +16,9 @@ from app.api.users import router as users_router
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.logging import configure_logging
+from app.web.assets import create_static
+from app.web.auth import router as web_auth_router
+from app.web.pages import router as web_pages_router
 
 
 @asynccontextmanager
@@ -35,6 +38,10 @@ def create_app() -> FastAPI:
     app.include_router(materials_router)
     app.include_router(deliveries_router)
     app.include_router(reports_router)
+    # веб-дашборд офиса: страницы вне OpenAPI-схемы, статика — отдельным mount
+    app.include_router(web_auth_router)
+    app.include_router(web_pages_router)
+    app.mount("/static", create_static(), name="static")
     return app
 
 

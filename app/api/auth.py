@@ -3,13 +3,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.concurrency import run_in_threadpool
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
 
 from app.api.deps import CurrentUser, SessionDep
-from app.core.security import DUMMY_PASSWORD_HASH, create_access_token, verify_password
-from app.models import User
+from app.core.security import authenticate_user, create_access_token
 from app.schemas.auth import Token
 from app.schemas.users import UserOut
 
@@ -21,13 +18,8 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()], session: SessionDep
 ) -> Token:
     """Вход по email и паролю (поле username формы — это email)."""
-    # email хранится в нижнем регистре — вход не зависит от регистра ввода
-    user = await session.scalar(select(User).where(User.email == form.username.lower()))
-    # argon2 — CPU-bound, поэтому тредпул; хэш проверяем и для неизвестного email,
-    # чтобы по времени ответа нельзя было перебирать зарегистрированные адреса
-    known_hash = user.password_hash if user and user.password_hash else DUMMY_PASSWORD_HASH
-    password_ok = await run_in_threadpool(verify_password, form.password, known_hash)
-    if user is None or user.password_hash is None or not password_ok or not user.is_active:
+    user = await authenticate_user(session, form.username, form.password)
+    if user is None:
         # один ответ на все случаи, чтобы не раскрывать, какой email зарегистрирован
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

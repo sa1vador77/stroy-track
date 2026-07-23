@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import brand_logo %}
+{% block title %}Вход — StroyTrack{% endblock %}
+{% block body_class %}d-flex flex-column{% endblock %}
+{% block body %}
+<div class="page page-center">
+  <div class="container container-tight py-4">
+    <div class="text-center mb-4">
+      <h1 class="navbar-brand navbar-brand-autodark fs-1 justify-content-center d-flex align-items-center gap-2">
+        {{ brand_logo(32) }}
+        StroyTrack
+      </h1>
+    </div>
+    <div class="card card-md">
+      <div class="card-body">
+        <h2 class="h2 text-center mb-4">Вход для офиса</h2>
+        {% if error %}
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+        {% endif %}
+        <form action="/dashboard/login" method="post">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <input type="email" id="email" name="email" class="form-control"
+                   value="{{ email or '' }}" placeholder="manager@example.com"
+                   autocomplete="username" required autofocus>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="password">Пароль</label>
+            <input type="password" id="password" name="password" class="form-control"
+                   placeholder="Пароль" autocomplete="current-password" required>
+          </div>
+          <div class="form-footer">
+            <button type="submit" class="btn btn-primary w-100">Войти</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="text-center text-secondary mt-3">Доступ выдаёт администратор</div>
+  </div>
+</div>
+{% endblock %}

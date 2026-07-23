@@ -1,0 +1,2 @@
+# vendored-библиотеки дашборда не считаются кодом проекта в статистике GitHub
+app/web/static/vendor/** linguist-vendored

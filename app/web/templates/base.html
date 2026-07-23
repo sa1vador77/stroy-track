@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}StroyTrack{% endblock %}</title>
+  <link rel="icon" href="data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23206bc4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='M3 21l18 0'/%3e%3cpath d='M5 21v-14l8 -4v18'/%3e%3cpath d='M19 21v-10l-6 -4'/%3e%3cpath d='M9 9l0 .01'/%3e%3cpath d='M9 12l0 .01'/%3e%3cpath d='M9 15l0 .01'/%3e%3cpath d='M9 18l0 .01'/%3e%3c/svg%3e">
+  <link rel="stylesheet" href="{{ url_for('static', path='vendor/tabler-1.4.0/tabler.min.css') }}">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block body %}{% endblock %}
+  <script src="{{ url_for('static', path='vendor/tabler-1.4.0/tabler.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='vendor/htmx-2.0.10/htmx.min.js') }}" defer></script>
+</body>
+</html>

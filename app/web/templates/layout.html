@@ -1,0 +1,31 @@
+{# Общий каркас страниц под cookie-логином: навбар с пользователем и выходом #}
+{% extends "base.html" %}
+{% from "_macros.html" import brand_logo %}
+{% block body %}
+<div class="page">
+  <header class="navbar navbar-expand-md d-print-none">
+    <div class="container-xl">
+      <h1 class="navbar-brand navbar-brand-autodark pe-0 pe-md-3">
+        <a href="/dashboard" class="text-decoration-none d-flex align-items-center gap-2">
+          {{ brand_logo(28) }}
+          StroyTrack
+        </a>
+      </h1>
+      <div class="navbar-nav flex-row order-md-last align-items-center gap-3">
+        <div class="d-none d-sm-block text-end">
+          <div>{{ user.full_name }}</div>
+          <div class="mt-1 small text-secondary">
+            {{ "Администратор" if user.role == "admin" else "Менеджер" }}
+          </div>
+        </div>
+        <form action="/dashboard/logout" method="post" class="m-0">
+          <button type="submit" class="btn btn-outline-secondary btn-sm">Выйти</button>
+        </form>
+      </div>
+    </div>
+  </header>
+  <div class="page-wrapper">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
