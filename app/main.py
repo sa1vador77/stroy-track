@@ -18,6 +18,7 @@ from app.core.db import engine
 from app.core.logging import configure_logging
 from app.web.assets import create_static
 from app.web.auth import router as web_auth_router
+from app.web.auth import sliding_session
 from app.web.pages import router as web_pages_router
 
 
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     app.include_router(web_auth_router)
     app.include_router(web_pages_router)
     app.mount("/static", create_static(), name="static")
+    app.middleware("http")(sliding_session)
     return app
 
 

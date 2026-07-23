@@ -233,6 +233,69 @@ class TestWebUserGate:
         assert response.status_code == 303
 
 
+class TestSlidingSession:
+    async def test_page_request_reissues_cookie(self, client: AsyncClient, make_user: UserFactory):
+        """Живой запрос продлевает сессию: активный пользователь не разлогинивается."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+        client.cookies.update(web_cookies(user))
+
+        response = await client.get("/dashboard")
+
+        assert response.status_code == 200
+        cookie = response.headers["set-cookie"].lower()
+        assert cookie.startswith(f"{ACCESS_COOKIE}=")
+        assert "; httponly" in cookie
+
+    async def test_filter_partial_reissues_cookie(
+        self, client: AsyncClient, make_user: UserFactory
+    ):
+        """Фильтр и поиск — тоже активность пользователя."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+        client.cookies.update(web_cookies(user))
+
+        response = await client.get(
+            "/dashboard/overview", headers={"HX-Request": "true", "HX-Trigger": "status-active"}
+        )
+
+        assert "set-cookie" in response.headers
+
+    async def test_poll_does_not_extend_session(self, client: AsyncClient, make_user: UserFactory):
+        """Забытая вкладка с poll'ом не должна держать сессию вечно."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+        client.cookies.update(web_cookies(user))
+
+        response = await client.get(
+            "/dashboard/overview", headers={"HX-Request": "true", "HX-Trigger": "overview"}
+        )
+
+        assert response.status_code == 200
+        assert "set-cookie" not in response.headers
+
+    async def test_anonymous_gets_no_cookie(self, client: AsyncClient):
+        response = await client.get("/dashboard")
+
+        assert "set-cookie" not in response.headers
+
+    async def test_expired_token_not_resurrected(self, client: AsyncClient, make_user: UserFactory):
+        """Просроченный токен не продлевается — иначе TTL терял бы смысл."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+        client.cookies.set(ACCESS_COOKIE, create_access_token(user.id, expires_minutes=-1))
+
+        response = await client.get("/dashboard")
+
+        assert response.status_code == 303
+        assert "set-cookie" not in response.headers
+
+    async def test_api_routes_untouched(self, client: AsyncClient, make_user: UserFactory):
+        """JSON-API живёт по Bearer-заголовку — cookie ему не навязывается."""
+        user = await make_user(UserRole.MANAGER, password=PASSWORD)
+        client.cookies.update(web_cookies(user))
+
+        response = await client.get("/health")
+
+        assert "set-cookie" not in response.headers
+
+
 class TestLogout:
     async def test_logout_clears_cookie(self, client: AsyncClient, make_user: UserFactory):
         user = await make_user(UserRole.MANAGER, password=PASSWORD)
@@ -242,6 +305,10 @@ class TestLogout:
 
         assert response.status_code == 303
         assert response.headers["location"] == LOGIN_URL
+        # ровно одна Set-Cookie — удаляющая; продление её не воскрешает
+        cookie = response.headers["set-cookie"].lower()
+        assert "max-age=0" in cookie or "expires=" in cookie
+        assert response.headers.get_list("set-cookie") == [response.headers["set-cookie"]]
         # cookie стёрта — дашборд снова требует вход
         after = await client.get("/dashboard")
         assert after.status_code == 303
