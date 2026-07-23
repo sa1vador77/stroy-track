@@ -565,14 +565,6 @@ class TestMaterialsInDialog:
         assert "Проверьте отчёт" in tg.sent_messages[-1].text
 
 
-@pytest.fixture
-def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Фото уходят во временный каталог вместо ./uploads."""
-    path = tmp_path / "uploads"
-    monkeypatch.setattr(get_settings(), "upload_dir", path)
-    return path
-
-
 class TestPhotosInDialog:
     async def test_photos_step_offered_after_workers(
         self,

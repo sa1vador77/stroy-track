@@ -20,6 +20,7 @@ from app.web.assets import create_static
 from app.web.auth import router as web_auth_router
 from app.web.auth import sliding_session
 from app.web.pages import router as web_pages_router
+from app.web.photos import router as web_photos_router
 
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     # веб-дашборд офиса: страницы вне OpenAPI-схемы, статика — отдельным mount
     app.include_router(web_auth_router)
     app.include_router(web_pages_router)
+    app.include_router(web_photos_router)
     app.mount("/static", create_static(), name="static")
     app.middleware("http")(sliding_session)
     return app

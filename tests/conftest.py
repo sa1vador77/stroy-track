@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from aiogram import Bot, Dispatcher
@@ -160,6 +161,25 @@ def make_user(db_session: AsyncSession) -> UserFactory:
         return user
 
     return _make
+
+
+@pytest.fixture
+async def office(client: AsyncClient, make_user: UserFactory) -> AsyncClient:
+    """HTTP-клиент с cookie менеджера — для тестов страниц дашборда."""
+    manager = await make_user(UserRole.MANAGER)
+    client.cookies.update(web_cookies(manager))
+    return client
+
+
+@pytest.fixture
+def upload_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Фото уходят во временный каталог вместо ./uploads.
+
+    Каталог сознательно не создаётся: бот делает mkdir сам, а тест брошенного
+    диалога проверяет, что каталога не появилось."""
+    path = tmp_path / "uploads"
+    monkeypatch.setattr(get_settings(), "upload_dir", path)
+    return path
 
 
 type SiteFactory = Callable[..., Awaitable[ConstructionSite]]
