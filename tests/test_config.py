@@ -54,3 +54,18 @@ def test_company_tzinfo_resolves():
     settings = Settings(_env_file=None)
 
     assert settings.company_tzinfo.key == "Europe/Moscow"
+
+
+@pytest.mark.parametrize("bad_time", ["25:00", "18:60", "8:00:00", "вечером", ""])
+def test_invalid_reminder_time_rejected(bad_time: str):
+    # не только формат: «25:00» и «18:60» валидны по маске, но не как время;
+    # пустая строка — это REMINDER_TIME= в .env, она не означает «дефолт»
+    with pytest.raises(ValidationError, match="reminder_time"):
+        Settings(reminder_time=bad_time, _env_file=None)
+
+
+def test_reminder_time_parsed():
+    settings = Settings(reminder_time="21:30", _env_file=None)
+
+    parsed = settings.reminder_time_parsed
+    assert (parsed.hour, parsed.minute) == (21, 30)

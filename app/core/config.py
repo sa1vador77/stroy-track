@@ -1,5 +1,6 @@
 """Настройки приложения: переменные окружения, .env, DSN базы."""
 
+from datetime import datetime, time
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
@@ -51,6 +52,25 @@ class Settings(BaseSettings):
     @property
     def company_tzinfo(self) -> ZoneInfo:
         return ZoneInfo(self.company_tz)
+
+    # напоминание о несданном отчёте ставится в конец окна сдачи: раньше оно
+    # дёргало бы тех, кто штатно сдаёт вечером
+    reminder_time: str = "20:00"
+
+    @field_validator("reminder_time")
+    @classmethod
+    def reminder_time_must_parse(cls, value: str) -> str:
+        # strptime режет и «25:00», и «18:60» — проверка «формата HH:MM»
+        # их пропустила бы, и падал бы уже APScheduler в рантайме, а не старт
+        try:
+            datetime.strptime(value, "%H:%M")
+        except ValueError:
+            raise ValueError(f"Неверное время напоминания: {value!r}, ожидается HH:MM") from None
+        return value
+
+    @property
+    def reminder_time_parsed(self) -> time:
+        return datetime.strptime(self.reminder_time, "%H:%M").time()
 
     @model_validator(mode="after")
     def forbid_weak_secrets_outside_local(self) -> Self:

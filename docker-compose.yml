@@ -47,10 +47,29 @@ services:
     environment:
       POSTGRES_HOST: postgres
     command: python -m app.bot
+    # тихая смерть фонового воркера незаметна пользователям — поднимаем сами
+    restart: unless-stopped
     # фото отчётов переживают пересоздание контейнера
     volumes:
       - uploads:/srv/stroytrack/uploads
     # ждёт app, а не только postgres: миграции накатывает процесс API
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    build: .
+    env_file:
+      - .env
+      # напоминания уходят от имени бота — токен нужен и этому процессу
+      - path: .env.bot
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+    command: python -m app.scheduler
+    restart: unless-stopped
+    # ровно одна реплика: MemoryJobStore без распределённого лока —
+    # вторая копия слала бы каждое напоминание дважды
     depends_on:
       app:
         condition: service_healthy
