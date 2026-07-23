@@ -7,6 +7,7 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import AnswerCallbackQuery, GetFile, SendMessage, TelegramMethod
 from aiogram.methods.base import TelegramType
 from aiogram.types import CallbackQuery, Chat, File, Message, PhotoSize, Update
@@ -23,6 +24,8 @@ class RecordingSession(BaseSession):
         super().__init__()
         self.requests: list[TelegramMethod[Any]] = []
         self.downloaded_paths: list[str] = []
+        # chat_id, для которых отправка «падает»: тесты сбоя доставки
+        self.fail_chat_ids: set[int] = set()
 
     @property
     def sent_messages(self) -> list[SendMessage]:
@@ -37,6 +40,10 @@ class RecordingSession(BaseSession):
     ) -> TelegramType:
         self.requests.append(method)
         if isinstance(method, SendMessage):
+            if method.chat_id in self.fail_chat_ids:
+                raise TelegramForbiddenError(
+                    method=method, message="Forbidden: bot was blocked by the user"
+                )
             return Message(
                 message_id=len(self.requests),
                 date=datetime.now(UTC),

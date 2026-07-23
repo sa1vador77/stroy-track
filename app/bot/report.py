@@ -1,6 +1,5 @@
 """Диалог сдачи отчёта: /report — объект, работы, численность, материалы, фото, запись."""
 
-from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +14,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.clock import company_today
 from app.core.config import get_settings
 from app.models import (
     ConstructionSite,
@@ -87,11 +87,6 @@ def create_router() -> Router:
     return router
 
 
-def _today() -> date:
-    # «сегодня» в поясе компании: вечерний отчёт по UTC-дате уехал бы на другой день
-    return datetime.now(get_settings().company_tzinfo).date()
-
-
 async def _assigned_sites(session: AsyncSession, foreman: User) -> list[ConstructionSite]:
     return list(
         await session.scalars(
@@ -152,7 +147,7 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     lines = [
         "Проверьте отчёт:",
         f"Объект: {data['site_name']}",
-        f"Дата: {_today():%d.%m.%Y}",
+        f"Дата: {company_today():%d.%m.%Y}",
         f"Работы: {data['work_description']}",
         f"Рабочих: {data['workers_count']}",
     ]
@@ -208,7 +203,7 @@ async def site_chosen(
         select(DailyReport.id).where(
             DailyReport.site_id == site.id,
             DailyReport.foreman_id == foreman.id,
-            DailyReport.report_date == _today(),
+            DailyReport.report_date == company_today(),
         )
     )
     await state.update_data(site_id=site.id, site_name=site.name)
@@ -376,7 +371,7 @@ async def submitted(
         await callback.message.answer("Объект вам больше не назначен — отчёт не сохранён.")
         await callback.answer()
         return
-    report_date = _today()
+    report_date = company_today()
     # фото качаются до открытия транзакции: сеть медленная, а транзакция — нет
     try:
         photo_paths = await _download_photos(callback.bot, data.get("photos", []))

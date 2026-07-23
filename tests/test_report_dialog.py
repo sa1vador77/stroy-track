@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog.testing import capture_logs
 
+from app.core.clock import company_today
 from app.core.config import get_settings
 from app.models import ConstructionSite, DailyReport, User
 from tests.conftest import FOREMAN_TG_ID, MaterialFactory, ReportFactory, SiteFactory, UserFactory
@@ -37,7 +38,7 @@ async def site(make_site: SiteFactory, foreman: User) -> ConstructionSite:
 
 
 def _today_str() -> str:
-    return f"{datetime.now(get_settings().company_tzinfo).date():%d.%m.%Y}"
+    return f"{company_today():%d.%m.%Y}"
 
 
 async def _fill_basics(dp: Dispatcher, bot: Bot, site: ConstructionSite) -> None:
@@ -979,7 +980,7 @@ class TestReplaceAndRaces:
         old = await make_report(
             site,
             foreman,
-            report_date=datetime.now(get_settings().company_tzinfo).date(),
+            report_date=company_today(),
             work_description="Старый отчёт",
         )
 
