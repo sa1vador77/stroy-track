@@ -3,15 +3,43 @@
 {% block content %}
 <div class="page-header d-print-none">
   <div class="container-xl">
-    <div class="row align-items-center">
+    <div class="row align-items-center g-3">
       <div class="col">
         <div class="page-pretitle">Обзор</div>
         <h2 class="page-title">Объекты</h2>
+      </div>
+      <div class="col-12 col-md-auto ms-auto">
+        {# фильтр и поиск — одна форма: partial всегда получает оба поля.
+           change слушается на самой форме — от радиокнопок он всплывает
+           (from:find взял бы только первую); submit отдаёт Enter в htmx
+           вместо нативной перезагрузки; hx-sync обрывает устаревший запрос #}
+        <form id="filters" hx-get="/dashboard/overview" hx-target="#overview"
+              hx-trigger="submit, change, input changed delay:300ms from:find [type=search]"
+              hx-sync="this:replace">
+          <div class="d-flex flex-wrap gap-2">
+            <div class="btn-group" role="group" aria-label="Фильтр по статусу">
+              {% for value, label in status_filters %}
+              <input type="radio" class="btn-check" name="status" value="{{ value }}"
+                     id="status-{{ value }}"{% if value == status %} checked{% endif %}>
+              <label class="btn" for="status-{{ value }}">{{ label }}</label>
+              {% endfor %}
+            </div>
+            <input type="search" name="q" value="{{ q }}" class="form-control"
+                   placeholder="Поиск по названию…" aria-label="Поиск по названию">
+          </div>
+        </form>
       </div>
     </div>
   </div>
 </div>
 <div class="page-body">
-  <div class="container-xl"></div>
+  <div class="container-xl">
+    {# poll подтягивает свежие отчёты; hx-include сохраняет текущий фильтр,
+       hx-sync подчиняет опрос запросам формы — гонка не перетрёт ввод #}
+    <div id="overview" hx-get="/dashboard/overview" hx-trigger="every 60s"
+         hx-include="#filters" hx-sync="#filters:abort">
+      {% include "_overview.html" %}
+    </div>
+  </div>
 </div>
 {% endblock %}

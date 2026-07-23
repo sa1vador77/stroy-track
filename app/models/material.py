@@ -30,7 +30,8 @@ class MaterialDelivery(Base):
         ForeignKey("materials.id", ondelete="RESTRICT"), index=True
     )
     quantity: Mapped[Decimal] = mapped_column(MATERIAL_QUANTITY)
-    delivery_date: Mapped[date]
+    # KPI дашборда считает «поставки за сегодня» срезом только по дате
+    delivery_date: Mapped[date] = mapped_column(index=True)
     supplier: Mapped[str]
 
     material: Mapped[Material] = relationship()

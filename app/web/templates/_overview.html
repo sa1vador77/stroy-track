@@ -1,0 +1,93 @@
+{# Живая часть обзора: KPI и карточки; её же отдаёт partial /dashboard/overview #}
+<div class="row row-deck row-cards mb-3">
+  <div class="col-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="subheader">Активные объекты</div>
+        <div class="h1 mb-0" id="kpi-active-sites">{{ kpi.active_sites }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="subheader">Отчёты за сегодня</div>
+        <div class="h1 mb-0" id="kpi-reports">{{ kpi.submitted }} из {{ kpi.expected }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="subheader">Рабочих на площадках</div>
+        <div class="h1 mb-0" id="kpi-workers">{{ kpi.workers }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card card-sm">
+      <div class="card-body">
+        <div class="subheader">Поставок сегодня</div>
+        <div class="h1 mb-0" id="kpi-deliveries">{{ kpi.deliveries }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if cards %}
+<div class="row row-deck row-cards">
+  {% for card in cards %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between gap-2 mb-1">
+          <h3 class="card-title mb-0">{{ card.name }}</h3>
+          <span class="badge {{ status_badges[card.status] }}">{{ status_labels[card.status] }}</span>
+        </div>
+        <div class="text-secondary mb-3">{{ card.address }}</div>
+        {% if card.foremen %}
+        <div class="d-flex flex-wrap gap-1">
+          {% for chip in card.foremen %}
+          {% if card.status == "active" %}
+          {# красный чип — прораб, от которого сегодня ещё ждут отчёт #}
+          <span class="badge {{ 'bg-success-lt' if chip.submitted else 'bg-danger-lt' }}">{{ chip.full_name }}</span>
+          {% else %}
+          <span class="badge bg-secondary-lt">{{ chip.full_name }}</span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-secondary">Прорабы не назначены</div>
+        {% endif %}
+      </div>
+      {% if card.status == "active" %}
+      <div class="card-footer d-flex justify-content-between text-secondary">
+        <span>Отчёты сегодня: {{ card.submitted_count }} из {{ card.foremen | length }}</span>
+        <span>Рабочих: {{ card.workers_today }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% elif q %}
+<div class="empty">
+  <p class="empty-title">Ничего не найдено</p>
+  <p class="empty-subtitle text-secondary">Попробуйте другой запрос или сбросьте фильтры</p>
+  <div class="empty-action">
+    <a href="/dashboard" class="btn btn-primary">Сбросить</a>
+  </div>
+</div>
+{% elif status != "all" %}
+<div class="empty">
+  <p class="empty-title">Нет объектов с этим статусом</p>
+  <div class="empty-action">
+    <a href="/dashboard?status=all" class="btn btn-primary">Показать все</a>
+  </div>
+</div>
+{% else %}
+<div class="empty">
+  <p class="empty-title">Объектов пока нет</p>
+  <p class="empty-subtitle text-secondary">Добавьте объект через API — он появится здесь</p>
+</div>
+{% endif %}

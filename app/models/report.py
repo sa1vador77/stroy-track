@@ -25,7 +25,9 @@ class DailyReport(Base):
     site_id: Mapped[int] = mapped_column(ForeignKey("construction_sites.id", ondelete="CASCADE"))
     # RESTRICT: у прораба с отчётами история сохраняется — вместо удаления есть is_active
     foreman_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
-    report_date: Mapped[date]
+    # дашборд ежеминутно срезает «сегодня» по всем объектам; составной unique
+    # ведёт по site_id и для поиска только по дате бесполезен
+    report_date: Mapped[date] = mapped_column(index=True)
     work_description: Mapped[str]
     workers_count: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
