@@ -2,27 +2,17 @@
 
 from datetime import timedelta
 
-import pytest
 from httpx import AsyncClient
 
 from app.core.clock import company_today
-from app.models import SiteStatus, UserRole
+from app.models import SiteStatus
 from tests.conftest import (
     DeliveryFactory,
     MaterialFactory,
     ReportFactory,
     SiteFactory,
     UserFactory,
-    web_cookies,
 )
-
-
-@pytest.fixture
-async def office(client: AsyncClient, make_user: UserFactory) -> AsyncClient:
-    """Клиент с cookie менеджера."""
-    manager = await make_user(UserRole.MANAGER)
-    client.cookies.update(web_cookies(manager))
-    return client
 
 
 class TestKpi:
